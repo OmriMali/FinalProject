@@ -126,7 +126,8 @@ class SimplePredictor:
 
     def predict(self, neighbors):
         """neighbors: array-like [spec_prev, left, above] (use 0 if not available)"""
-        return int(round(np.dot(self.w, neighbors)))
+        # return float prediction (we cast to int where needed)
+        return np.dot(self.w, neighbors)
 
     def adapt(self, neighbors, error):
         """LMS update: w += mu * error * neighbors_normalized"""
@@ -171,18 +172,23 @@ def ccsds123_encode(cube, bitdepth=12, near_lossless_Q=1):
                 above = recon[x, y - 1, b] if y > 0 else 0
                 neighbors = np.array([spec_prev, left, above], dtype=float)
 
+                # Default pred for first-sample & safe use later
+                pred = 0.0
+
                 if (x == 0 and y == 0 and b == 0):
                     # first sample: send raw (map to unsigned and write using Rice too)
                     residual = val
                 else:
                     pred = predictor.predict(neighbors)
-                    residual = val - pred
+                    # round prediction to integer when computing residual
+                    pred_int = int(round(pred))
+                    residual = val - pred_int
 
                 # near-lossless quantization (closed-loop): quantize residual
                 Q = int(near_lossless_Q)
                 if Q > 1:
                     qres = int(np.round(residual / Q))  # quantized residual integer
-                    recon_val = pred + qres * Q         # reconstructed sample used for feedback
+                    recon_val = int(pred) + qres * Q    # reconstructed sample used for feedback
                     # clip to valid range
                     recon_val = max(0, min(recon_val, (1 << bitdepth) - 1))
                     # store
@@ -199,11 +205,12 @@ def ccsds123_encode(cube, bitdepth=12, near_lossless_Q=1):
                 encoder.encode_value(m)
 
                 # adapt predictor using *reconstructed* neighbors and actual reconstruction error
-                # compute error in same units as used in predictor feedback (use recon_val - pred)
-                if Q > 1:
-                    err_for_adapt = recon[x, y, b] - pred
-                else:
-                    err_for_adapt = val - pred
+                # skip adaptation for the very first sample (no meaningful pred)
+                if (x == 0 and y == 0 and b == 0):
+                    continue
+
+                # use reconstructed value minus integer-rounded pred for adaptation
+                err_for_adapt = recon[x, y, b] - int(round(pred))
                 predictor.adapt(neighbors, err_for_adapt)
 
     coded = encoder.flush_bits()
@@ -233,24 +240,32 @@ def ccsds123_decode(header, coded_bytes):
                 above = recon[x, y - 1, b] if y > 0 else 0
                 neighbors = np.array([spec_prev, left, above], dtype=float)
 
-                pred = predictor.predict(neighbors)
+                # default pred
+                pred = 0.0
 
                 if (x == 0 and y == 0 and b == 0):
                     # first sample: store_value is raw sample if encoder used that convention
                     value = store_value
+                    # store and skip adaptation
+                    value = max(0, min(value, (1 << bitdepth) - 1))
+                    recon[x, y, b] = int(value)
+                    continue
                 else:
-                    if Q > 1:
-                        qres = store_value
-                        value = pred + qres * Q
-                    else:
-                        value = pred + store_value
+                    pred = predictor.predict(neighbors)
+                    pred_int = int(round(pred))
+
+                if Q > 1:
+                    qres = store_value
+                    value = pred_int + qres * Q
+                else:
+                    value = pred_int + store_value
 
                 # clip
                 value = max(0, min(value, (1 << bitdepth) - 1))
                 recon[x, y, b] = int(value)
 
                 # adapt predictor using reconstructed value
-                err_for_adapt = recon[x, y, b] - pred
+                err_for_adapt = recon[x, y, b] - pred_int
                 predictor.adapt(neighbors, err_for_adapt)
 
     return recon

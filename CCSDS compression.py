@@ -1,3 +1,9 @@
+
+# @file: CCSDS.py
+# @breif: Refernece code for CCSDS compression
+# Date Created: 28.11.25
+# Version: 0.0.0
+
 """
 Simplified-but-realistic CCSDS-123 style compressor and decompressor (lossless / near-lossless).
 - Implements: predictor (3-neighbour), closed-loop quantization, residual folding, adaptive Rice coding.
@@ -24,7 +30,7 @@ def unfold_unsigned_to_signed(m):
         return m // 2
     else:
         return -((m + 1) // 2)
-
+ 
 def write_bits_to_bytes(bitlist):
     """Simple pack bits (list of 0/1) into bytes (MSB first)."""
     b = bytearray()

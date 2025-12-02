@@ -58,7 +58,7 @@ def calc_local_sum(mode, idx, image_slice, Nx = None):
             image_slice[x-1, y])
     
 
-image = sp.io.loadmat("final project\\Indian_pines_corrected.mat")
+image = sp.io.loadmat("data\\Indian_pines_corrected.mat")
 image = image['indian_pines_corrected']
 Nx, Ny, Nz = image.shape
 

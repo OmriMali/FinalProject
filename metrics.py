@@ -28,3 +28,14 @@ def calc_SAM(original, reconstruction):
 
     # average SAM
     return np.mean(angles)
+
+
+def calc_compression_ratio(original, bitstring):
+    
+    original_bits_per_element = np.floor(np.log2(original + 1)).astype(int) + 1
+    original_total_bits = np.sum(original_bits_per_element)
+    bitstream_total_bits = len(bitstring)
+
+    ratio = original_total_bits / bitstream_total_bits
+
+    return ratio

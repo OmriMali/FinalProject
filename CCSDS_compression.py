@@ -225,7 +225,32 @@ def rice_decoder(bitstream, k, block_size, shape):
     return data.reshape(shape)
 
 def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
+    """
+    Parameters
+    ----------
+    image : ndarray
+        3D Input image array of dtype uint16 or compatible integer type.
+    local_sum_mode : str
+        Mode for local sum calculation in the predictor (e.g., 'col', 'narrow', 'wide').
+    P : int
+        Predictor parameter defining the number of considered spectral bands.
+    W : ndarray
+        1D Weighting array (dim = P) used in the predictor.
+    Omega : int
+        Predictor parameter balancing spectral-spatial prediction.
+    Q : int
+        Quantization parameter for the positive difference calculation.
+    block_size : int
+        Number of elements per block for Rice block-adaptive encoding.
 
+    Returns
+    -------
+    image_r : ndarray
+        Reconstructed image after compression and decompression. Should be nearly identical
+        to the input `image` if lossless parameters are used.
+    bitstream : ndarray of uint8
+        1D array of 0/1 bits representing the Rice-encoded positive differences of the image.
+    """
     image_hat = predictor(image, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
 

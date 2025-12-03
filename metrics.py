@@ -32,10 +32,11 @@ def calc_SAM(original, reconstruction):
 
 def calc_compression_ratio(original, bitstring):
     
-    original_bits_per_element = np.floor(np.log2(original + 1)).astype(int) + 1
-    original_total_bits = np.sum(original_bits_per_element)
+    max_val = np.max(original)
+    original_bits = int(np.log2(max(1, max_val))) + 1
+    original_total_bits = np.prod(original.shape) * original_bits
     bitstream_total_bits = len(bitstring)
 
     ratio = original_total_bits / bitstream_total_bits
-
     return ratio
+

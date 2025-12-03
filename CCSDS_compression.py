@@ -1,5 +1,5 @@
-### version: 0.1.0
-### date: 02/12/25
+### version: 0.3.0
+### date: 03/12/25
 ### author: almog the king
 
 import numpy as np
@@ -153,89 +153,98 @@ def reconstructor(delta_r, local_sum_mode, P, W, Omega):
 
     return image_r
 
-def rice_encoder(delta_positive, block_size=32):
+def rice_encoder(data, block_size):
     
-    delta_positive = delta_positive.flatten()
-    blocks = [delta_positive[i:i+block_size] for i in range(0, len(delta_positive), block_size)]
-
-    q = np.zeros(delta_positive.shape, dtype=np.uint16)
-    r = np.zeros(delta_positive.shape, dtype=np.uint16)
+    data = data.flatten()
+    blocks = [data[i:i+block_size] for i in range(0, len(data), block_size)]
     k = []
-    bitstrings = []
+    bitstream = []
 
     for i in range(0, len(blocks)):
-        k.append(int(np.log2(1 + np.mean(blocks[i]))))
+        k_i = int(np.floor(np.log2(1 + blocks[i].mean())))
+        k.append(k_i)
+        
         for j in range(i*block_size, i*block_size + len(blocks[i])):
-            q[j] = delta_positive[j] >> k[i]
-            r[j] = delta_positive[j] & ((1 << k[i]) - 1)
-            unary = '1' * q[j] + '0'
-            if k[i] > 0:
-                remainder = format(r[j], f'0{k[i]}b')  # zero-padded binary
-            else:
-                remainder = ''
-            bitstring = unary + remainder
-            bitstrings.append(bitstring)
-    
-    return k, bitstrings
+            q_j = data[j] >> k_i
+            r_j = data[j] & ((1 << k_i) - 1)
 
-def rice_decoder(bitstrings, k, block_size, shape):
+            # unary bits
+            bitstream.extend([1] * q_j)
+            bitstream.append(0)
+
+            # remainder bits
+            if k_i > 0:
+                bits = [(r_j >> b) & 1 for b in reversed(range(k_i))]
+                bitstream.extend(bits)
+
+
+    # Convert bitstream to NumPy array
+    bitstream = np.array(bitstream, dtype=np.uint8)
+
+    return k, bitstream
+
+def rice_decoder(bitstream, k, block_size, shape):
     
     total_len = np.prod(shape)
-    delta_positive = np.zeros(total_len, dtype=np.uint16)
+    data = np.zeros(total_len, dtype=np.uint16)
 
     # Compute block lengths
     num_blocks = len(k)
     block_lengths = [block_size] * num_blocks
+
     # adjust last block if needed
     last_block_len = total_len - block_size*(num_blocks-1)
     block_lengths[-1] = last_block_len
 
     bit_idx = 0
+    out_idx = 0
+    
     for i in range(num_blocks):
-        k_block = k[i]  # same k as used in encoder
+        k_i = k[i]
         block_len = block_lengths[i]
         
-        for j in range(i*block_size, i*block_size + block_len):
-            bstr = bitstrings[bit_idx]
-            
-            # Decode unary part to get q
-            q_val = bstr.find('0')  # count of leading '1's
-            unary_len = q_val + 1   # include terminating '0'
-            
-            # Decode remainder
-            if k_block > 0:
-                r_val = int(bstr[unary_len:unary_len + k_block], 2)
-            else:
-                r_val = 0
-            
-            # Reconstruct δz
-            delta_positive[j] = (q_val << k_block) + r_val
-            bit_idx += 1
+        for _ in range(block_len):
+            # ---- Decode unary part ----
+            q_val = 0
+            while bitstream[bit_idx]:
+                q_val += 1
+                bit_idx += 1
+            bit_idx += 1  # skip the terminating 0
 
-    return delta_positive.reshape(shape)
+            # ---- Decode remainder ----
+            r_val = 0
+            if k_i > 0:
+                for b in range(k_i):
+                    r_val = (r_val << 1) | int(bitstream[bit_idx])
+                    bit_idx += 1
+
+            # ---- Reconstruct value ----
+            data[out_idx] = (q_val << k_i) + r_val
+            out_idx += 1
+
+    return data.reshape(shape)
 
 def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
 
     image_hat = predictor(image, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
 
-    k, bitstrings = rice_encoder(delta_positive, block_size=block_size)
-    delta_positive = rice_decoder(bitstrings, k, block_size=block_size, shape=image.shape)
+    k, bitstream = rice_encoder(delta_positive, block_size=block_size)
+    delta_positive = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
 
     delta_r = unpack_positive_diff(delta_positive, Q=Q)
     image_r = reconstructor(delta_r, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
 
-    return image_r, bitstrings
+    return image_r, bitstream
 
 image = load_image("data\\Indian_pines_corrected.mat")
-image = image [:50, :50, :50]
+#image = image [:50, :50, :50]
 
-image_r, bitstrings = CCSDS(image, local_sum_mode='col', P=1, W=0.5*np.ones(1), Omega=0, Q=0, block_size=32)
-
+image_r, compressed_stream = CCSDS(image, local_sum_mode='col', P=1, W=0.5*np.ones(1), Omega=0, Q=0, block_size=32)
 
 print(f'RMSE = {metrics.calc_RMSE(image, image_r)}')
 print(f'SAM = {metrics.calc_SAM(image, image_r)}')
-print(f'Ratio = {metrics.calc_compression_ratio(image, bitstrings)}')
+print(f'Ratio = {metrics.calc_compression_ratio(image, compressed_stream)}')
 
 plt.subplot(1, 2, 1)
 plt.imshow(image[:,:,20], cmap='gray')

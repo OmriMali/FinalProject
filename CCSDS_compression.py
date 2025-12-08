@@ -1,6 +1,6 @@
-### version: 0.3.0
-### date: 03/12/25
-### author: almog the king
+### version: 0.4.0
+### date: 08/12/25
+### author: Omri
 
 import numpy as np
 import scipy as sp
@@ -255,17 +255,18 @@ def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
 
     k, bitstream = rice_encoder(delta_positive, block_size=block_size)
-    delta_positive = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
+    
+    delta_positive_r = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
 
-    delta_r = unpack_positive_diff(delta_positive, Q=Q)
+    delta_r = unpack_positive_diff(delta_positive_r, Q=Q)
     image_r = reconstructor(delta_r, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
 
-    return image_r, bitstream
+    return image_r, bitstream, delta_positive_r
 
 image = load_image("data\\Indian_pines_corrected.mat")
-#image = image [:50, :50, :50]
+image = image [:50, :50, :50]
 
-image_r, compressed_stream = CCSDS(image, local_sum_mode='col', P=1, W=0.5*np.ones(1), Omega=0, Q=0, block_size=32)
+image_r, compressed_stream, delta_positive_r = CCSDS(image, local_sum_mode='narrow', P=1, W=0.5*np.ones(1), Omega=0.5, Q=4, block_size=64)
 
 print(f'RMSE = {metrics.calc_RMSE(image, image_r)}')
 print(f'SAM = {metrics.calc_SAM(image, image_r)}')
@@ -275,4 +276,23 @@ plt.subplot(1, 2, 1)
 plt.imshow(image[:,:,20], cmap='gray')
 plt.subplot(1, 2, 2)
 plt.imshow(image_r[:,:,20], cmap='gray')
+plt.show()
+
+# 1. Histogram of the Original Image:
+plt.subplot(1, 2, 1)
+plt.hist(image.ravel(), bins=100, color='tab:blue', alpha=0.7)
+plt.title('Histogram: Original Image')
+plt.xlabel('Pixel Intensity')
+plt.ylabel('Frequency')
+plt.grid(True, alpha=0.3)
+
+# 2. Histogram of Delta Positive (Compressed symbols):
+plt.subplot(1, 2, 2)
+plt.hist(delta_positive_r.ravel(), bins=100, color='tab:orange', alpha=0.7)
+plt.title('Histogram: Delta Positive (Predictor Residuals)')
+plt.xlabel('Mapped Residual Value')
+plt.ylabel('Frequency')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
 plt.show()

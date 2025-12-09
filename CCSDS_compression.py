@@ -309,3 +309,4 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
         print(f"Finished calculation for value {i} out of {N}!")
 
     return images_r, bitstreams, deltas
+

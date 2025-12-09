@@ -1,11 +1,9 @@
-### version: 0.3.0
-### date: 03/12/25
+### version: 0.4.0
+### date: 09/12/25
 ### author: almog the king
 
 import numpy as np
-import scipy as sp
-import matplotlib.pyplot as plt
-import metrics
+import util
 
 def calc_local_sum(mode, idx, image_slice, Nx = None):
     """
@@ -57,17 +55,6 @@ def calc_local_sum(mode, idx, image_slice, Nx = None):
             image_slice[x+1, y-1] +
             image_slice[x-1, y])
 
-def load_image(path):
-    mat = sp.io.loadmat(path)
-    mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
-    # If there is only one remaining field, extract it
-    if len(mat_clean) == 1:
-        data_array = next(iter(mat_clean.values()))
-    else:
-        # If multiple fields, select the one with the largest array (often the data)
-        data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
-    return data_array
-    
 def predictor(image, local_sum_mode, P, W, Omega):
     
     Nx, Ny, Nz = image.shape
@@ -112,9 +99,9 @@ def generate_positive_diff(image, image_hat, Q):
     
     return delta_positive
 
-def unpack_positive_diff(delta_positive, Q):
-    Nx, Ny, Nz = image.shape
-    delta_r = np.zeros(image.shape, dtype=np.int32)
+def unpack_positive_diff(delta_positive, Q, shape):
+    Nx, Ny, Nz = shape
+    delta_r = np.zeros(shape, dtype=np.int32)
     for z in range(Nz):
         for y in range(Ny):
             for x in range(Nx):
@@ -257,22 +244,59 @@ def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
     k, bitstream = rice_encoder(delta_positive, block_size=block_size)
     delta_positive = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
 
-    delta_r = unpack_positive_diff(delta_positive, Q=Q)
+    delta_r = unpack_positive_diff(delta_positive, Q=Q, shape=image.shape)
     image_r = reconstructor(delta_r, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
 
     return image_r, bitstream
 
-image = load_image("data\\Indian_pines_corrected.mat")
-#image = image [:50, :50, :50]
+def sweep_CCSDS(image, param_name, param_values, fixed_params):
+    """
+    Sweep one CCSDS parameter.
+    
+    image : np.array
+        Input HSI
+    param_name : str
+        Name of the parameter to sweep, e.g. "Q" or "local_sum_mode"
+    param_values : list
+        Values of the parameter to test.
+    fixed_params : dict
+        All other CCSDS parameters that stay fixed:
+        {
+            "local_sum_mode": ...,
+            "P": ...,
+            "W": ...,
+            "Omega": ...,
+            "Q": ...,
+            "block_size": ...
+        }
+    
+    Returns:
+        RMSE, SAM, Compression Ratio as numpy arrays.
+    """
 
-image_r, compressed_stream = CCSDS(image, local_sum_mode='col', P=1, W=0.5*np.ones(1), Omega=0, Q=0, block_size=32)
+    RMSEs = []
+    SAMs = []
+    ratios = []
+    i = 0
+    N = len(param_values)
 
-print(f'RMSE = {metrics.calc_RMSE(image, image_r)}')
-print(f'SAM = {metrics.calc_SAM(image, image_r)}')
-print(f'Ratio = {metrics.calc_compression_ratio(image, compressed_stream)}')
-
-plt.subplot(1, 2, 1)
-plt.imshow(image[:,:,20], cmap='gray')
-plt.subplot(1, 2, 2)
-plt.imshow(image_r[:,:,20], cmap='gray')
-plt.show()
+    print(f"Starting sweep for {N} parameter values:")
+    for val in param_values:
+        params = {**fixed_params, param_name: val}
+        image_r, bitstream = CCSDS(
+            image,
+            local_sum_mode=params["local_sum_mode"],
+            P=params["P"],
+            W=params["W"],
+            Omega=params["Omega"],
+            Q=params["Q"],
+            block_size=params["block_size"]
+            )
+        
+        RMSEs.append(util.calc_RMSE(image, image_r))
+        SAMs.append(util.calc_SAM(image, image_r))
+        ratios.append(util.calc_compression_ratio(image, bitstream))
+        i += 1
+        print(f"Finished calculation for value {i} out of {N}!")
+    
+    return (np.array(RMSEs), np.array(SAMs), np.array(ratios))

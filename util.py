@@ -53,14 +53,40 @@ def calc_compression_ratio(I, bitstream):
     ratio = original_total_bits / bitstream_total_bits
     return ratio
 
+def calc_sweep_metrics(image, images_r, bitstreams):
+    """
+    Compute RMSE, SAM, and compression ratios for sweep results.
+
+    Returns
+    -------
+    RMSEs : np.array
+    SAMs : np.array
+    ratios : np.array
+    """
+
+    RMSEs = []
+    SAMs = []
+    ratios = []
+
+    for image_r, bitstream in zip(images_r, bitstreams):
+        RMSEs.append(calc_RMSE(image, image_r))
+        SAMs.append(calc_SAM(image, image_r))
+        ratios.append(calc_compression_ratio(image, bitstream))
+
+    return (
+        np.array(RMSEs),
+        np.array(SAMs),
+        np.array(ratios)
+    )
+
 def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
-                       directory, filename,
-                       titles=False
-                       ):
+                       directory, name,
+                       titles=False):
     """
     Save sweep_CCSDS results:
     - Save CSV file
     - Save RMSE, SAM, and Compression Ratio plots as PNG files
+    all results are saved in a new folder at directory/filename
 
     Parameters
     ----------
@@ -72,19 +98,20 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
         Results from sweep_CCSDS.
     directory : str
         Directory to save files.
-    filename : str
-        Parent name for the output files.
+    name : str
+        folder name for the output files.
     titles : bool
         Whether to add titles to the plots.
     """
 
     # Ensure directory exists
+    directory = os.path.join(directory, name)
     os.makedirs(directory, exist_ok=True)
 
     # ============
     # 1. SAVE CSV
     # ============
-    csv_path = os.path.join(directory, filename)
+    csv_path = os.path.join(directory, name)
 
     with open(csv_path, mode="w", newline="") as f:
         writer = csv.writer(f)
@@ -99,9 +126,9 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     # 2. PREPARE PLOT FILE NAMES (if needed)
     # ======================================
     plot_filenames = {
-            "rmse":  f"{filename}_rmse.png",
-            "sam":   f"{filename}_sam.png",
-            "ratio": f"{filename}_ratio.png",
+            "rmse":  f"{name}_rmse.png",
+            "sam":   f"{name}_sam.png",
+            "ratio": f"{name}_ratio.png",
         }
 
     # ======================
@@ -148,3 +175,42 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     plt.savefig(ratio_path, dpi=300)
     plt.close()
     print(f"Saved Ratio plot to {ratio_path}")
+
+def save_histogram(array, directory, filename, bins=50, log_scale=False):
+    """
+    Saves a histogram of `array` into the specified directory, under the given filename.
+    No title is added. Optional log-scale on the y-axis and consistent styling.
+    
+    Parameters:
+        array (np.ndarray): Input data array.
+        directory (str): Directory path to save the histogram.
+        filename (str): Output filename (e.g., 'hist.png').
+        bins (int): Number of histogram bins (default: 50).
+        log_scale (bool): If True, plot the y-axis in log scale.
+    """
+
+    # Flatten to 1D for histogram
+    array = np.asarray(array).ravel()
+
+    # Ensure output directory exists
+    os.makedirs(directory, exist_ok=True)
+    out_path = os.path.join(directory, filename + ".png")
+
+    # Consistent style
+    plt.style.use('seaborn-v0_8-paper')
+
+    # Plot
+    plt.figure(figsize=(6, 4), dpi=120)
+    plt.hist(array, bins=bins)
+
+    # Axis labels
+    plt.xlabel("Value")
+    plt.ylabel("Count")
+
+    if log_scale:
+        plt.yscale('log')
+
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
+    return out_path

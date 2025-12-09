@@ -1,7 +1,3 @@
-### version: 0.4.0
-### date: 09/12/25
-### author: almog the king
-
 import numpy as np
 import util
 
@@ -237,22 +233,26 @@ def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
         to the input `image` if lossless parameters are used.
     bitstream : ndarray of uint8
         1D array of 0/1 bits representing the Rice-encoded positive differences of the image.
+    delta_positive : ndarray
+        An array containing the differences between predictor output and original image.
     """
     image_hat = predictor(image, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
 
     k, bitstream = rice_encoder(delta_positive, block_size=block_size)
-    delta_positive = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
+    delta_positive_r = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
 
-    delta_r = unpack_positive_diff(delta_positive, Q=Q, shape=image.shape)
+    delta_r = unpack_positive_diff(delta_positive_r, Q=Q, shape=image.shape)
     image_r = reconstructor(delta_r, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
 
-    return image_r, bitstream
+    return image_r, bitstream, delta_positive
 
 def sweep_CCSDS(image, param_name, param_values, fixed_params):
     """
-    Sweep one CCSDS parameter.
+    Sweep one CCSDS parameter and return raw CCSDS outputs.
     
+    Parameters
+    ----------
     image : np.array
         Input HSI
     param_name : str
@@ -270,20 +270,29 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
             "block_size": ...
         }
     
-    Returns:
-        RMSE, SAM, Compression Ratio as numpy arrays.
+    Returns
+    -------
+    images_r : list
+        Reconstructed images for each sweep value.
+    bitstreams : list
+        Bitstreams for each sweep value.
+    deltas_positive : list
+        delta_positive arrays for each sweep value.
     """
 
-    RMSEs = []
-    SAMs = []
-    ratios = []
-    i = 0
-    N = len(param_values)
+    images_r = []
+    bitstreams = []
+    deltas = []
 
+    N = len(param_values)
     print(f"Starting sweep for {N} parameter values:")
-    for val in param_values:
+
+    for i, val in enumerate(param_values, start=1):
+
+        # override the swept parameter
         params = {**fixed_params, param_name: val}
-        image_r, bitstream = CCSDS(
+
+        image_r, bitstream, delta_positive = CCSDS(
             image,
             local_sum_mode=params["local_sum_mode"],
             P=params["P"],
@@ -291,12 +300,12 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
             Omega=params["Omega"],
             Q=params["Q"],
             block_size=params["block_size"]
-            )
-        
-        RMSEs.append(util.calc_RMSE(image, image_r))
-        SAMs.append(util.calc_SAM(image, image_r))
-        ratios.append(util.calc_compression_ratio(image, bitstream))
-        i += 1
+        )
+
+        images_r.append(image_r)
+        bitstreams.append(bitstream)
+        deltas.append(delta_positive)
+
         print(f"Finished calculation for value {i} out of {N}!")
-    
-    return (np.array(RMSEs), np.array(SAMs), np.array(ratios))
+
+    return images_r, bitstreams, deltas

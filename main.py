@@ -31,7 +31,7 @@ util.save_sweep_results(
     RMSE,
     SAM,
     ratio,
-    'results/CCSDS',
+    'results/CCSDS/test1',
     'test1'
 )
 

@@ -86,7 +86,6 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     Save sweep_CCSDS results:
     - Save CSV file
     - Save RMSE, SAM, and Compression Ratio plots as PNG files
-    all results are saved in a new folder at directory/filename
 
     Parameters
     ----------
@@ -105,7 +104,6 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     """
 
     # Ensure directory exists
-    directory = os.path.join(directory, name)
     os.makedirs(directory, exist_ok=True)
 
     # ============

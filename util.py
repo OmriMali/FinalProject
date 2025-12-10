@@ -17,12 +17,23 @@ def load_image(path):
 
 def calc_RMSE(I, I_hat):
     
+    # determine normalization
+    if np.issubdtype(I.dtype, np.integer):
+        bitdepth = I.dtype.itemsize * 8
+        norm = (2**bitdepth - 1)
+        I_norm = I / norm
+        I_hat_norm = I_hat / norm
+    else:
+        # float images: assume already scaled (e.g., [0,1])
+        I_norm = I
+        I_hat_norm = I_hat
+
     shape = I.shape
     factor = 1
     for dim in shape:
         factor *= dim
     
-    return np.sqrt(np.sum(np.pow(I - I_hat, 2)) / factor)
+    return np.sqrt(np.sum(np.pow(I_norm - I_hat_norm, 2)) / factor)
 
 def calc_SAM(I, I_hat):
 

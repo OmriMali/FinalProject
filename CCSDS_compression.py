@@ -1,5 +1,4 @@
 import numpy as np
-import util
 
 def calc_local_sum(mode, idx, image_slice, Nx = None):
     """
@@ -207,7 +206,7 @@ def rice_decoder(bitstream, k, block_size, shape):
 
     return data.reshape(shape)
 
-def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
+def CCSDS(image, local_sum_mode, P, Omega, Q, block_size, W=None):
     """
     Parameters
     ----------
@@ -217,14 +216,14 @@ def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
         Mode for local sum calculation in the predictor (e.g., 'col', 'narrow', 'wide').
     P : int
         Predictor parameter defining the number of considered spectral bands.
-    W : ndarray
-        1D Weighting array (dim = P) used in the predictor.
     Omega : int
         Predictor parameter balancing spectral-spatial prediction.
     Q : int
         Quantization parameter for the positive difference calculation.
     block_size : int
         Number of elements per block for Rice block-adaptive encoding.
+    W : ndarray
+        1D Weighting array (dim = P) used in the predictor. if None, its constant. defaults to None.
 
     Returns
     -------
@@ -236,6 +235,11 @@ def CCSDS(image, local_sum_mode, P, W, Omega, Q, block_size):
     delta_positive : ndarray
         An array containing the differences between predictor output and original image.
     """
+    if P == 0:
+        W = np.array([])
+    elif W is None:
+        W = np.ones(P) / P
+
     image_hat = predictor(image, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
 
@@ -264,7 +268,6 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
         {
             "local_sum_mode": ...,
             "P": ...,
-            "W": ...,
             "Omega": ...,
             "Q": ...,
             "block_size": ...
@@ -296,7 +299,6 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
             image,
             local_sum_mode=params["local_sum_mode"],
             P=params["P"],
-            W=params["W"],
             Omega=params["Omega"],
             Q=params["Q"],
             block_size=params["block_size"]

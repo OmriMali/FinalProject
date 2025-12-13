@@ -1,5 +1,10 @@
-import numpy as np
+### version: 0.6.0
+### date: 09/12/25
+### author: Omri "(Omi)" Malik
+### description: CCSDS compression and decompression functions for hyperspectral images
 
+import numpy as np
+import time
 def calc_local_sum(mode, idx, image_slice, Nx = None):
     """
     Calculate a local weighted sum depending on neighborhood mode.
@@ -150,13 +155,13 @@ def rice_encoder(data, block_size):
             q_j = data[j] >> k_i
             r_j = data[j] & ((1 << k_i) - 1)
 
-            # unary bits
+            # unary bits:
             bitstream.extend([1] * q_j)
             bitstream.append(0)
 
-            # remainder bits
+            # remainder bits (binary representation):
             if k_i > 0:
-                bits = [(r_j >> b) & 1 for b in reversed(range(k_i))]
+                bits = [(r_j >> b) & 1 for b in reversed(range(k_i))] 
                 bitstream.extend(bits)
 
 
@@ -168,8 +173,8 @@ def rice_encoder(data, block_size):
 def rice_decoder(bitstream, k, block_size, shape):
     
     total_len = np.prod(shape)
-    data = np.zeros(total_len, dtype=np.uint16)
-
+    data = np.zeros(total_len, dtype=np.uint32)
+    
     # Compute block lengths
     num_blocks = len(k)
     block_lengths = [block_size] * num_blocks
@@ -206,12 +211,52 @@ def rice_decoder(bitstream, k, block_size, shape):
 
     return data.reshape(shape)
 
-def CCSDS(image, local_sum_mode, P, Omega, Q, block_size, W=None):
+import numpy as np
+
+def add_noise_to_bitstream(bitstream, ber):
+        """
+        Simulates adding noise to a bitstream by randomly flipping bits 
+        with a given Bit Error Rate (BER).
+
+        Parameters
+        ----------
+        bitstream : np.ndarray
+            A 1D NumPy array of bits (0s and 1s), typically np.uint8.
+        ber : float
+            The Bit Error Rate (probability of a single bit flip, 0 < ber < 1).
+
+        Returns
+        -------
+        np.ndarray
+            The noisy bitstream.
+        int
+            The actual number of errors introduced.
+        """
+        
+        # 1. Generate random numbers (one for each bit)
+        # Uniformly distributed between 0.0 and 1.0.
+        random_samples = np.random.rand(len(bitstream))
+        
+        # 2. Create the error mask
+        # A bit flip occurs wherever the random number is <= BER (0.001).
+        error_mask = (random_samples <= ber)
+        
+        # Calculate the actual number of errors introduced
+        num_errors = np.sum(error_mask)
+        
+        # 3. Apply the error mask
+        # Flipping a bit is achieved by XORing it with 1.
+        # e.g., 0 XOR 1 = 1, and 1 XOR 1 = 0
+        noisy_bitstream = bitstream ^ error_mask.astype(bitstream.dtype)
+        
+        return noisy_bitstream
+
+def CCSDS(image, local_sum_mode, P, Omega, Q, block_size, W=None, BER=0):
     """
     Parameters
     ----------
     image : ndarray
-        3D Input image array of dtype uint16 or compatible integer type.
+        3D Input image array of dtype uint32 or compatible integer type.
     local_sum_mode : str
         Mode for local sum calculation in the predictor (e.g., 'col', 'narrow', 'wide').
     P : int
@@ -239,17 +284,27 @@ def CCSDS(image, local_sum_mode, P, Omega, Q, block_size, W=None):
         W = np.array([])
     elif W is None:
         W = np.ones(P) / P
-
+    
+    start_time=time.time()
+    # Compressor:
     image_hat = predictor(image, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
     delta_positive = generate_positive_diff(image, image_hat, Q=Q)
+    end_time=time.time()
 
+    compression_time_complexity=end_time-start_time
+
+    
+    # Channel:
     k, bitstream = rice_encoder(delta_positive, block_size=block_size)
+    if(BER!=0):
+        bitstream=add_noise_to_bitstream(bitstream=bitstream, ber=BER)
     delta_positive_r = rice_decoder(bitstream, k, block_size=block_size, shape=image.shape)
 
+    # Reconstract:
     delta_r = unpack_positive_diff(delta_positive_r, Q=Q, shape=image.shape)
     image_r = reconstructor(delta_r, local_sum_mode=local_sum_mode, P=P, W=W, Omega=Omega)
 
-    return image_r, bitstream, delta_positive
+    return image_r, bitstream, delta_positive, compression_time_complexity
 
 def sweep_CCSDS(image, param_name, param_values, fixed_params):
     """
@@ -286,6 +341,7 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
     images_r = []
     bitstreams = []
     deltas = []
+    complexities=[]
 
     N = len(param_values)
     print(f"Starting sweep for {N} parameter values:")
@@ -295,20 +351,21 @@ def sweep_CCSDS(image, param_name, param_values, fixed_params):
         # override the swept parameter
         params = {**fixed_params, param_name: val}
 
-        image_r, bitstream, delta_positive = CCSDS(
+        image_r, bitstream, delta_positive, compression_time_complexity = CCSDS(
             image,
             local_sum_mode=params["local_sum_mode"],
             P=params["P"],
             Omega=params["Omega"],
             Q=params["Q"],
-            block_size=params["block_size"]
+            block_size=params["block_size"],
+            BER=params["BER"]
         )
 
         images_r.append(image_r)
         bitstreams.append(bitstream)
         deltas.append(delta_positive)
-
+        complexities.append(compression_time_complexity)
         print(f"Finished calculation for value {i} out of {N}!")
 
-    return images_r, bitstreams, deltas
+    return images_r, bitstreams, deltas, complexities
 

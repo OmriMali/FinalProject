@@ -13,7 +13,7 @@ def load_image(path):
     else:
         # If multiple fields, select the one with the largest array (often the data)
         data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
-    return data_array
+    return data_array.astype(np.uint32)
 
 def calc_RMSE(I, I_hat):
     
@@ -223,3 +223,47 @@ def save_histogram(array, directory, filename, bins=50, log_scale=False):
     plt.close()
 
     return out_path
+import matplotlib.pyplot as plt
+import os
+import numpy as np # Essential for image array handling
+
+def save_images(image1, name1, image2, name2, filename, directory):
+    """
+    Plots two images side-by-side in a single figure and saves the figure 
+    to a specified file path. Assumes image arrays are (Height, Width, Bands).
+    """
+    # 1. Create Figure and Subplots (fig is the object we MUST save)
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5)) 
+
+    # Apply style
+    plt.style.use('seaborn-v0_8-paper')
+    
+    # 2. PLOT IMAGES - Assuming (Height, Width, Bands) format:
+    # Selects the LAST band (slice)
+    im1_data = image1[:,:,50] 
+    im2_data = image2[:,:,50]
+    
+    # Plot 1
+    im1 = axes[0].imshow(im1_data, cmap='gray')
+    axes[0].set_title(name1)
+    axes[0].axis('off')
+    fig.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
+    
+    # Plot 2
+    im2 = axes[1].imshow(im2_data, cmap='gray') 
+    axes[1].set_title(name2) 
+    axes[1].axis('off')
+    fig.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
+
+    # 3. Finalize Layout
+    plt.tight_layout()
+    
+    # 4. Save to Path
+    os.makedirs(directory, exist_ok=True)
+    out_path = os.path.join(directory, filename + ".png")
+
+    # *** CRITICAL: Save the 'fig' object explicitly ***
+    fig.savefig(out_path, bbox_inches='tight', dpi=120)
+
+    # 5. Close the figure
+    plt.close(fig)

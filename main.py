@@ -16,24 +16,24 @@ image = util.load_image(f"data\\{image_name}")
 # image = image[:50, :50, :50]
 
 # Testing with sweep on a specific parameter:
-param_name='P'
-param_values = [0, 1, 2, 3, 4, 8]
+param_name='Q'
+param_values = [0, 1, 2, 3, 4, 5]
 fixed_params = {
     "local_sum_mode": "wide",
     "P": 2,
-    "Q": 4,
-    "Omega": 1, 
+    "Q": 0,
+    "Omega": 0, 
     "block_size": 64,
     "BER": 0.000}
 
 # Option A: For testing with parameter sweep:
-
 images_r, bitstreams, deltas, complexities = CCSDS_compression.sweep_CCSDS(
     image, 
     param_name=param_name, 
     param_values=param_values, 
     fixed_params=fixed_params
     )
+
 RMSE, SAM, ratio = util.calc_sweep_metrics(image, images_r, bitstreams)
 util.save_sweep_results(
     param_name,
@@ -41,22 +41,23 @@ util.save_sweep_results(
     RMSE,
     SAM,
     ratio,
+    complexities,
+    fixed_params,
     f'results/CCSDS/{param_name}_sweep_{image_name_short}',
     f'{param_name}_sweep_{image_name_short}'
 )
 
-param_chosen_index=4
-
-print(f"results for {image_name_short} with:")
-for key, value in fixed_params.items():
-    if(key==param_name):
-        print(f"{param_name} = {param_values[param_chosen_index]}")
-    else:
-        print(f"{key} = {value}")
-print(f"RMSE = {util.calc_RMSE(image,images_r[param_chosen_index])}")
-print(f"SAM = {util.calc_SAM(image,images_r[param_chosen_index])}")
-print(f"comp_ratio = {util.calc_compression_ratio(image,bitstreams[param_chosen_index])}")
-print(f"compression_time_complexity = {complexities[param_chosen_index]}")
+# param_chosen_index=0
+# print(f"results for {image_name_short} with:")
+# for key, value in fixed_params.items():
+#     if(key==param_name):
+#         print(f"{param_name} = {param_values[param_chosen_index]}")
+#     else:
+#         print(f"{key} = {value}")
+# print(f"RMSE = {util.calc_RMSE(image,images_r[param_chosen_index])}")
+# print(f"SAM = {util.calc_SAM(image,images_r[param_chosen_index])}")
+# print(f"comp_ratio = {util.calc_compression_ratio(image,bitstreams[param_chosen_index])}")
+# print(f"compression_time_complexity = {complexities[param_chosen_index]}")
 
 # # optional plots (carefull not to overide): 
 # util.save_histogram(image, 'results/CCSDS/histograms', f'{image_name_short}_hist')

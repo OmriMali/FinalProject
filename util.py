@@ -90,7 +90,9 @@ def calc_sweep_metrics(image, images_r, bitstreams):
         np.array(ratios)
     )
 
-def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
+def save_sweep_results(param_name, param_values,
+                       RMSEs, SAMs, ratios, complexities,
+                       fixed_params,
                        directory, name,
                        titles=False):
     """
@@ -104,8 +106,10 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
         Name of the swept parameter.
     param_values : array-like
         Values used for sweeping.
-    RMSEs, SAMs, ratios : array-like
+    RMSEs, SAMs, ratios, complexities : array-like
         Results from sweep_CCSDS.
+    fixed_params : dict
+        Dictionary of fixed CCSDS parameters.
     directory : str
         Directory to save files.
     name : str
@@ -120,15 +124,24 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     # ============
     # 1. SAVE CSV
     # ============
-    csv_path = os.path.join(directory, name)
+    csv_path = os.path.join(directory, f"{name}.csv")
 
     with open(csv_path, mode="w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([param_name, "RMSE", "SAM", "Compression_Ratio"])
-        for p, r, s, c in zip(param_values, RMSEs, SAMs, ratios):
-            writer.writerow([p, r, s, c])
 
-    print(f"Saved CSV results to {csv_path}")
+        # ---- Fixed-parameter metadata ----
+        fixed_str = ", ".join(f"{k}={v}" for k, v in fixed_params.items())
+        writer.writerow([f"# fixed_params: {fixed_str}"])
+        writer.writerow([f"# swept_param: {param_name}"])
+
+        # ---- Header ----
+        writer.writerow([param_name, "RMSE", "SAM", "Compression Ratio", "Compression Time"])
+
+        # ---- Data rows ----
+        for p, r, s, c, t in zip(param_values, RMSEs, SAMs, ratios, complexities):
+            writer.writerow([p, r, s, c, t])
+
+    print(f"Saved results to {csv_path}")
 
 
     # ======================================
@@ -138,6 +151,7 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
             "rmse":  f"{name}_rmse.png",
             "sam":   f"{name}_sam.png",
             "ratio": f"{name}_ratio.png",
+            "time": f"{name}_time.png"
         }
 
     # ======================
@@ -185,6 +199,21 @@ def save_sweep_results(param_name, param_values, RMSEs, SAMs, ratios,
     plt.close()
     print(f"Saved Ratio plot to {ratio_path}")
 
+    # ======================
+    # 6. SAVE TIME PLOT
+    # ======================
+    plt.figure()
+    plt.plot(param_values, complexities, marker='o')
+    plt.xlabel(param_name)
+    plt.ylabel("Compression Time [s]")
+    if titles:
+        plt.title(f"Compression Time vs {param_name}")
+    plt.grid(True)
+    time_path = os.path.join(directory, plot_filenames["time"])
+    plt.savefig(time_path, dpi=300)
+    plt.close()
+    print(f"Saved Ratio plot to {time_path}")
+
 def save_histogram(array, directory, filename, bins=50, log_scale=False):
     """
     Saves a histogram of `array` into the specified directory, under the given filename.
@@ -223,9 +252,6 @@ def save_histogram(array, directory, filename, bins=50, log_scale=False):
     plt.close()
 
     return out_path
-import matplotlib.pyplot as plt
-import os
-import numpy as np # Essential for image array handling
 
 def save_images(image1, name1, image2, name2, filename, directory):
     """

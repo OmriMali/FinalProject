@@ -1,16 +1,27 @@
 import numpy as np
 import util
+import time
 
 
 class CCSDS_123:
-    def __init__(self, local_sum_mode='column', P=1, Omega=0, a=0, block_size=32):
-        self.local_sum_mode = local_sum_mode
-        self.P = P 
-        self.Omega = Omega
-        self.a = a
-        self.block_size = block_size
-        self.W = np.ones(P, dtype=np.int32)
-    
+    def __init__(self, local_sum_mode='column', P=1, Omega=8, a=0, block_size=32):
+        self.local_sum_mode = local_sum_mode            # Mode for local sum
+        self.P = P                                      # Amount of spectral bands used in predictor
+        self.Omega = Omega                              # Resolution of calculation
+        self.a = a                                      # Absolute error limit (per pixel)
+        self.block_size = block_size                    # Block size for encoder
+        
+        weights = []
+        w_0 = (7 * (1 << self.Omega)) >> 3
+        weights.append(w_0)
+
+        for i in range(1, self.P):
+            w_prev = weights[-1]
+            w_next = w_prev >> 3
+            weights.append(w_next)
+        
+        self.W = np.array(weights, dtype=np.int32)     # Weights for predictor
+
     def load(self, Image):
 
         if not isinstance(Image, np.ndarray):
@@ -60,26 +71,6 @@ class CCSDS_123:
                     U[x, y, 1:] = U[x, y, :-1]
                     U[x, y, 0] = 4*s_rep - sigma
 
-                    # if (x==0 and y==0):
-                    #     theta = min(s_hat - self.smin, self.smax - s_hat)
-                    # else:
-                    #     theta = min((s_hat - self.smin + self.a) // a_den,
-                    #                 (self.smax - s_hat + self.a) // a_den)
-
-                    # abs_q = abs(q)
-                    # mid = (self.smin + self.smax) // 2
-
-                    # if abs_q <= theta:
-                    #     if q >= 0:
-                    #         delta[x, y, z] = 2 * abs_q
-                    #     else:
-                    #         delta[x, y, z] = 2 * abs_q - 1
-                    # elif (q > 0 and s_hat <= mid) or (q < 0 and s_hat > mid):
-                    #     delta[x, y, z] = abs_q + theta
-                    # else:
-                    #     delta[x, y, z] = 2 * abs_q - 1
-
-                    # 4. Pure ZigZag Mapping (No Theta)
                     if q >= 0:
                         delta[x, y, z] = 2 * q
                     else:
@@ -122,88 +113,109 @@ class CCSDS_123:
 
         else:
             raise ValueError(f"Invalid local sum mode: {self.local_sum_mode}")
-            
+    
     def rice_encoder(self):
-
         if not hasattr(self, "delta"):
-            raise RuntimeError("Mapped quantizer indices delta not computed yet")
+            raise RuntimeError("Run encoder_predictor first")
 
-        data = self.delta.transpose(2, 1, 0).flatten()
-        blocks = [data[i:i+self.block_size] for i in range(0, len(data), self.block_size)]
+        data = []
+        for z in range(self.Nz):
+            for y in range(self.Ny):
+                for x in range(self.Nx):
+                    data.append(int(self.delta[x, y, z]))
+        
+        bitstream = []
+        k_list = []
+        idx = 0
+        N = len(data)
+        
+        while idx < N:
+            end = min(idx + self.block_size, N)
+            block = data[idx:end]
+            idx = end
+            
+            sorted_block = sorted(block)
+            mid_idx = len(block) // 2
+            med = sorted_block[mid_idx] 
+            
+            k = 0
+            if med > 0:
+                k = med.bit_length() - 1
+                k = int(np.floor(np.log2(med + 1)))
+            
+            k_list.append(k)
 
-        k = []
-        bitstream = []  
+            for value in block:
+                q = value >> k
+                r = value & ((1 << k) - 1)
+                
+                # Unary part
+                bitstream.extend([1] * q)
+                bitstream.append(0) 
+                
+                # Remainder part
+                for b in reversed(range(k)):
+                    bitstream.append((r >> b) & 1)
 
-        for block in blocks:
-                med = int(np.median(block))
-                k_i = max(0, int(np.floor(np.log2(med + 1))))
-                k.append(k_i)
-
-                for value in block:
-                    q = value >> k_i
-                    r = value & ((1 << k_i) - 1)
-
-                    # unary(q)
-                    bitstream.extend([1] * q)
-                    bitstream.append(0)
-
-                    # binary remainder
-                    for b in reversed(range(k_i)):
-                        bitstream.append((r >> b) & 1)
-
-        self.k = np.array(k, dtype=np.int32)
+        self.k = np.array(k_list, dtype=np.int32)
         self.bitstream = np.array(bitstream, dtype=np.uint8)
         return self.k, self.bitstream
-    
+
     def rice_decoder(self):
-
-        if not hasattr(self, "k"):
-            raise RuntimeError("Rice parameters k not available")
-
-        if not hasattr(self, "bitstream"):
-            raise RuntimeError("Rice bitstream not available")
+        if not hasattr(self, "k"): raise RuntimeError("No k params")
+        if not hasattr(self, "bitstream"): raise RuntimeError("No bitstream")
 
         bitstream = self.bitstream
         k_list = self.k
-        block_size = self.block_size
-
-        delta = []
+        
+        total_pixels = self.Nx * self.Ny * self.Nz
+        flat_delta = []
+        
         bit_idx = 0
-
-        for k_i in k_list:
-            for _ in range(block_size):
-                if bit_idx >= len(bitstream):
-                    break  # last block may be partial
-
-                # --- decode unary quotient q ---
+        k_idx = 0
+        
+        # Decode Loop
+        while len(flat_delta) < total_pixels:
+            if k_idx >= len(k_list):
+                break
+                
+            current_k = int(k_list[k_idx])
+            k_idx += 1
+            
+            remaining = total_pixels - len(flat_delta)
+            count = min(self.block_size, remaining)
+            
+            for _ in range(count):
+                # Decode Unary
                 q = 0
-                while bitstream[bit_idx] == 1:
+                while bit_idx < len(bitstream) and bitstream[bit_idx] == 1:
                     q += 1
                     bit_idx += 1
-                    if bit_idx >= len(bitstream):
-                        raise ValueError("Unexpected end of bitstream during unary decoding")
-
-                # consume the terminating zero
-                bit_idx += 1
-
-                # --- decode remainder r ---
+                bit_idx += 1 # skip delimiter 0
+                
+                # Decode Remainder
                 r = 0
-                for _ in range(k_i):
-                    if bit_idx >= len(bitstream):
-                        raise ValueError("Unexpected end of bitstream during remainder decoding")
-                    r = (r << 1) | bitstream[bit_idx]
+                for _ in range(current_k):
+                    if bit_idx >= len(bitstream): break
+                    r = (r << 1) | int(bitstream[bit_idx])
                     bit_idx += 1
+                
+                val = (q << current_k) + r
+                flat_delta.append(val)
 
-                # reconstruct delta
-                value = (q << k_i) + r
-                delta.append(value)
-
-        delta = np.array(delta, dtype=np.int32)
-        delta = delta.reshape((self.Nz, self.Ny, self.Nx)).transpose(2, 1, 0)
-        self.delta_r = delta
-
-        return delta
-
+        # Reconstruct 3D Array (Z, Y, X order)
+        delta_r = np.zeros((self.Nx, self.Ny, self.Nz), dtype=np.int32)
+        idx = 0
+        for z in range(self.Nz):
+            for y in range(self.Ny):
+                for x in range(self.Nx):
+                    if idx < len(flat_delta):
+                        delta_r[x, y, z] = flat_delta[idx]
+                        idx += 1
+                    
+        self.delta_r = delta_r
+        return delta_r
+    
     def decoder_predictor(self):
 
         if not hasattr(self, "delta_r"):
@@ -211,7 +223,6 @@ class CCSDS_123:
 
         S_rep = np.zeros_like(self.S, dtype=np.int32)
         U = np.zeros((self.Nx, self.Ny, self.P), dtype=np.int32)
-        a_den = 2*self.a + 1
 
         for z in range(self.Nz):
             for y in range(self.Ny):
@@ -226,29 +237,10 @@ class CCSDS_123:
 
                     delta_val = self.delta_r[x, y, z]
 
-                    # if x == 0 and y == 0:
-                    #     theta = min(s_hat - self.smin, self.smax - s_hat)
-                    # else:
-                    #     theta = min((s_hat - self.smin + self.a) // a_den,
-                    #                 (self.smax - s_hat + self.a) // a_den)
-                        
-                    # if delta_val <= 2 * theta:
-                    #     if delta_val % 2 == 0:
-                    #         q = delta_val // 2
-                    #     else:
-                    #         q = -( (delta_val + 1) // 2 )
-                    # else:
-                    #     if s_hat <= (self.smin + self.smax) // 2:
-                    #         q = delta_val - theta
-                    #     else:
-                    #         q = -(delta_val - theta)
-
-                    # 3. Inverse ZigZag Mapping (No Theta)
                     if delta_val % 2 == 0:
-                        q = delta_val // 2      # Even -> Positive
+                        q = delta_val // 2      
                     else:
-                        q = -(delta_val + 1) // 2 # Odd -> Negative
-
+                        q = -(delta_val + 1) // 2
 
                     s_rep = np.clip(s_hat + q * (2*self.a + 1), self.smin, self.smax)
                     S_rep[x, y, z] = s_rep           
@@ -259,5 +251,42 @@ class CCSDS_123:
         self.S_rec = S_rep
         return S_rep
     
+    def run(self, Image):
+        
+        self.load(Image)
 
+        start_time = time.time()
 
+        self.encoder_predictor()
+        _, bitstream = self.rice_encoder()
+
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+
+        self.rice_decoder()
+        S_rec = self.decoder_predictor()
+
+        rmse = util.calc_RMSE(self.S, S_rec)
+        sam = util.calc_SAM(self.S, S_rec)
+        ratio = util.calc_compression_ratio(self.S, bitstream)
+
+        results = {
+            "name": "CCSDS_123",
+            "reconstructed": S_rec,
+            "bitstream": bitstream,
+            "metrics": {
+                "RMSE": rmse,
+                "SAM": sam,
+                "Compression Ratio": ratio,
+                "Compression Time": elapsed_time
+            },
+            "params": {
+                "Local Sum Mode": self.local_sum_mode,
+                "P": self.P,
+                "Omega": self.Omega,
+                "a": self.a,
+                "Block Size": self.block_size
+            }
+        }
+    
+        return results

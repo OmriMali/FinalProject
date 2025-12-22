@@ -5,87 +5,56 @@
 
 import numpy as np
 import CCSDS_compression
+import CCSDS_new
 import util
 
-# Load an image:
-image_name="Indian_pines_corrected.mat"
-image_name_short="IP"
+# Load Data
+image_path="data\\SalinasA_corrected.mat"
+image_name_short="SA"
 
-image = util.load_image(f"data\\{image_name}")
-# # Test on image's crop (faster):
+image = util.load_image(image_path)
 # image = image[:50, :50, :50]
 
-# Testing with sweep on a specific parameter:
-param_name='Q'
-param_values = [0, 1, 2, 3, 4, 5]
-fixed_params = {
-    "local_sum_mode": "wide",
-    "P": 2,
-    "Q": 0,
-    "Omega": 0, 
-    "block_size": 64,
-    "BER": 0.000}
 
-# Option A: For testing with parameter sweep:
-images_r, bitstreams, deltas, complexities = CCSDS_compression.sweep_CCSDS(
-    image, 
-    param_name=param_name, 
-    param_values=param_values, 
-    fixed_params=fixed_params
-    )
+# Define the Sweep
+param_name = "P"
+param_values = [1, 2, 3]
 
-RMSE, SAM, ratio = util.calc_sweep_metrics(image, images_r, bitstreams)
+# Lists to store aggregated results
+rmse_list = []
+sam_list = []
+ratio_list = []
+time_list = []
+
+print(f"--- Starting Sweep for {param_name} ---")
+
+for val in param_values:
+
+    compressor = CCSDS_new.CCSDS_123(P=val, a=0)
+    print(f"Running P={val}...")
+    res = compressor.run(image) 
+  
+    m = res["metrics"]
+    rmse_list.append(m["RMSE"])
+    sam_list.append(m["SAM"])
+    ratio_list.append(m["Compression Ratio"])
+    time_list.append(m["Compression Time"])
+
+fixed_params = res["params"].copy()
+fixed_params.pop("P", None)
+
+output_dir = f"results\\CCSDS\\{image_name_short}_sweep_{param_name}"
+
 util.save_sweep_results(
-    param_name,
-    param_values,
-    RMSE,
-    SAM,
-    ratio,
-    complexities,
-    fixed_params,
-    f'results/CCSDS/{param_name}_sweep_{image_name_short}',
-    f'{param_name}_sweep_{image_name_short}'
+    param_name=param_name,
+    param_values=param_values,
+    RMSEs=rmse_list,
+    SAMs=sam_list,
+    ratios=ratio_list,
+    complexities=time_list,
+    fixed_params=fixed_params,
+    directory=output_dir,
+    name=f"{image_name_short}_sweep_{param_name}",
+    titles=False
 )
 
-# param_chosen_index=0
-# print(f"results for {image_name_short} with:")
-# for key, value in fixed_params.items():
-#     if(key==param_name):
-#         print(f"{param_name} = {param_values[param_chosen_index]}")
-#     else:
-#         print(f"{key} = {value}")
-# print(f"RMSE = {util.calc_RMSE(image,images_r[param_chosen_index])}")
-# print(f"SAM = {util.calc_SAM(image,images_r[param_chosen_index])}")
-# print(f"comp_ratio = {util.calc_compression_ratio(image,bitstreams[param_chosen_index])}")
-# print(f"compression_time_complexity = {complexities[param_chosen_index]}")
-
-# # optional plots (carefull not to overide): 
-# util.save_histogram(image, 'results/CCSDS/histograms', f'{image_name_short}_hist')
-# util.save_histogram(deltas[param_chosen_index], 'results/CCSDS/histograms', f'{image_name_short}_compressed_hist')
-# util.save_images(image, image_name_short, images_r[param_chosen_index], f"{image_name_short}_reconstructed", f"{image_name_short}_comparission", 'results/CCSDS/reconstructed_images')
-
-
-# Option B: For testing with different W (without seep):
-
-# image_r, bit_stream, deltas, compression_time_comlexity=CCSDS_compression.CCSDS(image, 
-#                                                                                 fixed_params["local_sum_mode"],
-#                                                                                 P=fixed_params["P"], 
-#                                                                                 W=np.ones(fixed_params["P"]) / fixed_params["P"], 
-#                                                                                 Omega=fixed_params["Omega"], 
-#                                                                                 Q=fixed_params["Q"], 
-#                                                                                 block_size=fixed_params["block_size"],
-#                                                                                 BER=fixed_params["BER"])
-
-
-# print(f"results for {image_name_short} with:")
-# for key, value in fixed_params.items():
-#     print(f"{key} = {value}")
-# print(f"RMSE={util.calc_RMSE(image,image_r)}")
-# print(f"SAM={util.calc_SAM(image,image_r)}")
-# print(f"comp_ratio={util.calc_compression_ratio(image,bit_stream)}")
-# print(f"compression_time_complexity = {compression_time_comlexity}")
-
-# # # optional plots (carefull not to overide): 
-# # util.save_histogram(image, 'results/CCSDS/histograms', f'{image_name_short}_hist')
-# # util.save_histogram(deltas, 'results/CCSDS/histograms', f'{image_name_short}_compressed_hist')
-# # util.save_images(image, image_name_short, image_r, f"{image_name_short}_reconstructed", f"{image_name_short}_comparission_with_BER", 'results/CCSDS/reconstructed_images')

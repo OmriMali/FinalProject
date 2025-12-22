@@ -1,6 +1,15 @@
+### version: 0.7.0
+### date: 22/12/25
+### author: Almog "hamelech" Sade
+### description: CCSDS-123 Compressor in a class implementation.
+
 import numpy as np
 import util
 import time
+from tqdm import tqdm
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class CCSDS_123:
@@ -50,7 +59,7 @@ class CCSDS_123:
         U = np.zeros((self.Nx, self.Ny, self.P), dtype=np.int32)
         a_den = 2*self.a + 1
 
-        for z in range(self.Nz):
+        for z in tqdm(range(self.Nz), desc="[1/4] Encoder Prediction", unit='band'):
             for y in range(self.Ny):
                 for x in range(self.Nx):
                     
@@ -128,34 +137,39 @@ class CCSDS_123:
         k_list = []
         idx = 0
         N = len(data)
-        
-        while idx < N:
-            end = min(idx + self.block_size, N)
-            block = data[idx:end]
-            idx = end
-            
-            sorted_block = sorted(block)
-            mid_idx = len(block) // 2
-            med = sorted_block[mid_idx] 
-            
-            k = 0
-            if med > 0:
-                k = med.bit_length() - 1
-                k = int(np.floor(np.log2(med + 1)))
-            
-            k_list.append(k)
 
-            for value in block:
-                q = value >> k
-                r = value & ((1 << k) - 1)
+        total_blocks = (N + self.block_size -1) // self.block_size
+
+        with tqdm(total=total_blocks, desc="[2/4] Rice Encoding   ", unit="blk") as pbar:
+            while idx < N:
+                end = min(idx + self.block_size, N)
+                block = data[idx:end]
+                idx = end
                 
-                # Unary part
-                bitstream.extend([1] * q)
-                bitstream.append(0) 
+                sorted_block = sorted(block)
+                mid_idx = len(block) // 2
+                med = sorted_block[mid_idx] 
                 
-                # Remainder part
-                for b in reversed(range(k)):
-                    bitstream.append((r >> b) & 1)
+                k = 0
+                if med > 0:
+                    k = med.bit_length() - 1
+                    k = int(np.floor(np.log2(med + 1)))
+                
+                k_list.append(k)
+
+                for value in block:
+                    q = value >> k
+                    r = value & ((1 << k) - 1)
+                    
+                    # Unary part
+                    bitstream.extend([1] * q)
+                    bitstream.append(0) 
+                    
+                    # Remainder part
+                    for b in reversed(range(k)):
+                        bitstream.append((r >> b) & 1)
+
+                pbar.update(1)
 
         self.k = np.array(k_list, dtype=np.int32)
         self.bitstream = np.array(bitstream, dtype=np.uint8)
@@ -175,33 +189,36 @@ class CCSDS_123:
         k_idx = 0
         
         # Decode Loop
-        while len(flat_delta) < total_pixels:
-            if k_idx >= len(k_list):
-                break
+        with tqdm(total=total_pixels, desc="[3/4] Rice Decoding     ", unit="pix") as pbar:
+            while len(flat_delta) < total_pixels:
+                if k_idx >= len(k_list):
+                    break
+                    
+                current_k = int(k_list[k_idx])
+                k_idx += 1
                 
-            current_k = int(k_list[k_idx])
-            k_idx += 1
-            
-            remaining = total_pixels - len(flat_delta)
-            count = min(self.block_size, remaining)
-            
-            for _ in range(count):
-                # Decode Unary
-                q = 0
-                while bit_idx < len(bitstream) and bitstream[bit_idx] == 1:
-                    q += 1
-                    bit_idx += 1
-                bit_idx += 1 # skip delimiter 0
+                remaining = total_pixels - len(flat_delta)
+                count = min(self.block_size, remaining)
                 
-                # Decode Remainder
-                r = 0
-                for _ in range(current_k):
-                    if bit_idx >= len(bitstream): break
-                    r = (r << 1) | int(bitstream[bit_idx])
-                    bit_idx += 1
+                for _ in range(count):
+                    # Decode Unary
+                    q = 0
+                    while bit_idx < len(bitstream) and bitstream[bit_idx] == 1:
+                        q += 1
+                        bit_idx += 1
+                    bit_idx += 1 # skip delimiter 0
+                    
+                    # Decode Remainder
+                    r = 0
+                    for _ in range(current_k):
+                        if bit_idx >= len(bitstream): break
+                        r = (r << 1) | int(bitstream[bit_idx])
+                        bit_idx += 1
+                    
+                    val = (q << current_k) + r
+                    flat_delta.append(val)
                 
-                val = (q << current_k) + r
-                flat_delta.append(val)
+                pbar.update(count)
 
         # Reconstruct 3D Array (Z, Y, X order)
         delta_r = np.zeros((self.Nx, self.Ny, self.Nz), dtype=np.int32)
@@ -224,7 +241,7 @@ class CCSDS_123:
         S_rep = np.zeros_like(self.S, dtype=np.int32)
         U = np.zeros((self.Nx, self.Ny, self.P), dtype=np.int32)
 
-        for z in range(self.Nz):
+        for z in tqdm(range(self.Nz), desc="[4/4] Decoder Prediction", unit="band"):
             for y in range(self.Ny):
                 for x in range(self.Nx):
                     
@@ -250,7 +267,7 @@ class CCSDS_123:
 
         self.S_rec = S_rep
         return S_rep
-    
+
     def run(self, Image):
         
         self.load(Image)
@@ -262,7 +279,6 @@ class CCSDS_123:
 
         end_time = time.time()
         elapsed_time = end_time - start_time
-
         self.rice_decoder()
         S_rec = self.decoder_predictor()
 
@@ -290,3 +306,117 @@ class CCSDS_123:
         }
     
         return results
+    
+    def sweep(self, image, image_name, sweep_param, sweep_values, fixed_params, bands_snapshot=[], save_path=None):
+
+        # 1. Setup Directories
+        if save_path is None:
+            save_path = os.getcwd()
+            
+        folder_name = f"{image_name}_sweep_{sweep_param}_CCSDS_123"
+        full_output_path = os.path.join(save_path, folder_name)
+        
+        if not os.path.exists(full_output_path):
+            os.makedirs(full_output_path)
+            
+        csv_filename = f"{folder_name}.csv"
+        csv_path = os.path.join(full_output_path, csv_filename)
+
+        # 2. Configure Bands (Limit to 4)
+        target_bands = bands_snapshot[:4]
+        
+        # Dictionary to store slices: { band_idx: [ (label, slice_data), ... ] }
+        snapshot_history = {b: [] for b in target_bands}
+
+        # 3. Load Original Data & Store Original Slices
+        self.load(image)
+        for b in target_bands:
+            if 0 <= b < self.Nz:
+                # Copying is important so it doesn't get overwritten
+                snapshot_history[b].append(
+                    ("Original", self.S[:, :, b].copy())
+                )
+
+        # 4. Initialize CSV
+        header_info = (
+            f"# Image: {image_name}\n"
+            f"# Shape: {self.S.shape}\n"
+            f"# Compressor: CCSDS-123\n"
+            f"# Fixed Parameters: {fixed_params}\n"
+            f"# Sweep Parameter: {sweep_param}\n"
+        )
+        
+        with open(csv_path, 'w') as f:
+            f.write(header_info)
+            
+        columns = ["Sweep Value", "RMSE", "SAM", "Compression Ratio", "Compression Time"]
+        pd.DataFrame(columns=columns).to_csv(csv_path, mode='a', index=False, header=True)
+
+        print(f"Starting sweep for {sweep_param} over values: {sweep_values}")
+
+        # --- Helper Function to Plot a Row ---
+        def update_band_plot(band_idx, history_list):
+            num_plots = len(history_list)
+            # Create a figure: 1 row, N columns. Width expands with more plots.
+            fig, axes = plt.subplots(1, num_plots, figsize=(4 * num_plots, 4), squeeze=False)
+            axes_flat = axes.flatten()
+            
+            for i, (label, img_slice) in enumerate(history_list):
+                ax = axes_flat[i]
+                ax.imshow(img_slice, cmap='gray')
+                ax.set_title(label, fontsize=10)
+                ax.axis('off')
+            
+            plt.tight_layout()
+            # Overwrite the file so it grows with every step
+            plt.savefig(os.path.join(full_output_path, f"band_{band_idx}_comparison.png"), bbox_inches='tight')
+            plt.close(fig)
+
+        # 5. Sweep Loop
+        for val in sweep_values:
+            print(f"\n--- Running sweep: {sweep_param} = {val} ---")
+            
+            # Update Params
+            for param, fixed_val in fixed_params.items():
+                setattr(self, param, fixed_val)
+            setattr(self, sweep_param, val)    
+
+            # Re-calc weights if needed
+            if sweep_param in ['P', 'Omega'] or 'P' in fixed_params or 'Omega' in fixed_params:
+                weights = []
+                w_0 = (7 * (1 << self.Omega)) >> 3
+                weights.append(w_0)
+                for i in range(1, self.P):
+                    w_prev = weights[-1]
+                    w_next = w_prev >> 3
+                    weights.append(w_next)
+                self.W = np.array(weights, dtype=np.int32)
+
+            # Run
+            result = self.run(image)
+            metrics = result['metrics']
+            
+            # Save to CSV
+            row_data = {
+                "Sweep Value": val,
+                "RMSE": metrics['RMSE'],
+                "SAM": metrics['SAM'],
+                "Compression Ratio": metrics['Compression Ratio'],
+                "Compression Time": metrics['Compression Time']
+            }
+            pd.DataFrame([row_data]).to_csv(csv_path, mode='a', index=False, header=False)
+            
+            # Save Slices & Update Plots
+            S_rec = result['reconstructed']
+            for b in target_bands:
+                if 0 <= b < self.Nz:
+                    # 1. Store the new slice
+                    label_str = f"{sweep_param}={val}"
+                    snapshot_history[b].append(
+                        (label_str, S_rec[:, :, b].copy())
+                    )
+                    
+                    # 2. Update the comparison image file immediately
+                    update_band_plot(b, snapshot_history[b])
+
+        print(f"\nSweep completed. Results saved to: {full_output_path}")

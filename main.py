@@ -1,6 +1,6 @@
-### version: 0.6.0
-### date: 09/12/25
-### author: Omri "(Omi)" Malik
+### version: 0.7.0
+### date: 22/12/25
+### author: Almog "hamelech" Sade
 ### description: Main script to test CCSDS compression on hyperspectral images with parameter sweep functionality.
 
 import numpy as np
@@ -9,52 +9,24 @@ import CCSDS_new
 import util
 
 # Load Data
-image_path="data\\SalinasA_corrected.mat"
-image_name_short="SA"
-
+image_path="data\Indian_pines_corrected.mat"
+image_name_short="IP"
 image = util.load_image(image_path)
 # image = image[:50, :50, :50]
 
+#  Sweep
+sweep_param = 'a'
+sweep_vals = [0, 2, 4, 6, 8, 10]
+fixed_params = {'local_sum_mode': 'column', 'P': 2, 'Omega': 8, 'block_size': 32}
+bands_to_save = [50, 100, 150]
 
-# Define the Sweep
-param_name = "P"
-param_values = [1, 2, 3]
-
-# Lists to store aggregated results
-rmse_list = []
-sam_list = []
-ratio_list = []
-time_list = []
-
-print(f"--- Starting Sweep for {param_name} ---")
-
-for val in param_values:
-
-    compressor = CCSDS_new.CCSDS_123(P=val, a=0)
-    print(f"Running P={val}...")
-    res = compressor.run(image) 
-  
-    m = res["metrics"]
-    rmse_list.append(m["RMSE"])
-    sam_list.append(m["SAM"])
-    ratio_list.append(m["Compression Ratio"])
-    time_list.append(m["Compression Time"])
-
-fixed_params = res["params"].copy()
-fixed_params.pop("P", None)
-
-output_dir = f"results\\CCSDS\\{image_name_short}_sweep_{param_name}"
-
-util.save_sweep_results(
-    param_name=param_name,
-    param_values=param_values,
-    RMSEs=rmse_list,
-    SAMs=sam_list,
-    ratios=ratio_list,
-    complexities=time_list,
+compressor = CCSDS_new.CCSDS_123()
+compressor.sweep(
+    image=image,
+    image_name=image_name_short,
+    sweep_param=sweep_param,
+    sweep_values=sweep_vals,
     fixed_params=fixed_params,
-    directory=output_dir,
-    name=f"{image_name_short}_sweep_{param_name}",
-    titles=False
+    bands_snapshot=bands_to_save,
+    save_path="results\\CCSDS",
 )
-

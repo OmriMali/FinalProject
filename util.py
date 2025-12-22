@@ -29,6 +29,7 @@ def get_bounds(arr):
     vmax = np.max(arr)
 
     return vmin, vmax
+
 def calc_RMSE(I, I_hat):
     
     # determine normalization

@@ -7,14 +7,28 @@ import os
 def load_image(path):
     mat = sp.io.loadmat(path)
     mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
-    # If there is only one remaining field, extract it
+
     if len(mat_clean) == 1:
         data_array = next(iter(mat_clean.values()))
     else:
-        # If multiple fields, select the one with the largest array (often the data)
         data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
-    return data_array.astype(np.uint32)
 
+    print(f'Image loaded as a np.array with dtype: {data_array.dtype} and shape:{data_array.shape}')
+    return data_array
+
+def get_bounds(arr):
+    """
+    Returns the min & max values in the array.
+    """
+    arr = np.asarray(arr)
+
+    if arr.size == 0:
+        raise ValueError("Input array is empty")
+
+    vmin = np.min(arr)
+    vmax = np.max(arr)
+
+    return vmin, vmax
 def calc_RMSE(I, I_hat):
     
     # determine normalization
@@ -214,7 +228,8 @@ def save_sweep_results(param_name, param_values,
     plt.close()
     print(f"Saved Ratio plot to {time_path}")
 
-def save_histogram(array, directory, filename, bins=50, log_scale=False):
+def save_histogram(array, directory, filename, log_scale=False):
+    
     """
     Saves a histogram of `array` into the specified directory, under the given filename.
     No title is added. Optional log-scale on the y-axis and consistent styling.
@@ -223,30 +238,31 @@ def save_histogram(array, directory, filename, bins=50, log_scale=False):
         array (np.ndarray): Input data array.
         directory (str): Directory path to save the histogram.
         filename (str): Output filename (e.g., 'hist.png').
-        bins (int): Number of histogram bins (default: 50).
         log_scale (bool): If True, plot the y-axis in log scale.
     """
 
-    # Flatten to 1D for histogram
     array = np.asarray(array).ravel()
 
-    # Ensure output directory exists
     os.makedirs(directory, exist_ok=True)
     out_path = os.path.join(directory, filename + ".png")
 
-    # Consistent style
-    plt.style.use('seaborn-v0_8-paper')
-
-    # Plot
     plt.figure(figsize=(6, 4), dpi=120)
-    plt.hist(array, bins=bins)
 
-    # Axis labels
+    if np.issubdtype(array.dtype, np.integer):
+        vmin = int(array.min())
+        vmax = int(array.max())
+        # One bin per integer value
+        bins = np.arange(vmin - 0.5, vmax + 1.5, 1)
+        plt.hist(array, bins=bins)
+
+    else:
+        raise ValueError("Array type is non-integer.")
+
     plt.xlabel("Value")
     plt.ylabel("Count")
 
     if log_scale:
-        plt.yscale('log')
+        plt.yscale("log")
 
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()

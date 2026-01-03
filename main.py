@@ -9,12 +9,12 @@ import CCSDS_new
 import util
 
 # Load Data
-image_path="data\Indian_pines_corrected.mat"
+image_path="data\\Indian_pines_corrected.mat"
 image_name_short="IP"
 image = util.load_image(image_path)
 # image = image[:50, :50, :50]
 
-#  Sweep
+# Sweep
 sweep_param = 'a'
 sweep_vals = [0, 2, 4, 6, 8, 10]
 fixed_params = {'local_sum_mode': 'column', 'P': 2, 'Omega': 8, 'block_size': 32}

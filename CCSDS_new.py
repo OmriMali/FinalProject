@@ -67,7 +67,7 @@ class CCSDS_123:
 
                     d_hat = np.dot(self.W, U[x, y, :])
 
-                    s_hat = s_hat = (d_hat + (sigma << self.Omega)) >> (2 + self.Omega)
+                    s_hat = (d_hat + (sigma << self.Omega)) >> (2 + self.Omega)
                     s_hat = np.clip(s_hat, self.smin, self.smax)
 
                     Delta = self.S[x, y, z] - s_hat
@@ -249,7 +249,7 @@ class CCSDS_123:
 
                     d_hat = np.dot(self.W, U[x, y, :])
 
-                    s_hat = s_hat = (d_hat + (sigma << self.Omega)) >> (2 + self.Omega)
+                    s_hat = (d_hat + (sigma << self.Omega)) >> (2 + self.Omega)
                     s_hat = np.clip(s_hat, self.smin, self.smax)
 
                     delta_val = self.delta_r[x, y, z]

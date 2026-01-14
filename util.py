@@ -310,3 +310,89 @@ def save_images(image1, name1, image2, name2, filename, directory):
 
     # 5. Close the figure
     plt.close(fig)
+
+def linear_transform(x, Psi, axis=-1):
+    """
+    Applies a linear transformation matrix Psi to a specific axis of the array x.
+    
+    This function implements the operation y = Psi * v for every vector v 
+    located along the specified axis of x.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input array of shape (..., N, ...).
+    Psi : ndarray
+        Transformation matrix of shape (M, N).
+        Note: The second dimension of Psi (N) must match the size of x 
+        along the specified axis.
+    axis : int, optional
+        The axis along which to apply the transformation. Default is -1.
+
+    Returns
+    -------
+    ndarray
+        Transformed array of shape (..., M, ...), where the size of the 
+        specified axis has changed from N to M.
+    """
+    x_s = np.moveaxis(x, axis, -1)
+    x_transformed = x_s @ Psi.T
+    return np.moveaxis(x_transformed, -1, axis)
+
+def sparsify(x, Psi, T=0.99, axis=-1):
+    """
+    Transforms an array x into basis Psi and retains only the largest coefficients 
+    required to preserve T% of the total energy.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input data array of shape (..., N, ...).
+    Psi : ndarray
+        Transformation basis matrix of shape (M, N). 
+    T : float, optional
+        Energy preservation threshold (0 < T <= 1.0). 
+        Default is 0.99 (99% energy).
+    axis : int, optional
+        The axis along which to apply the transform. Default is -1 (last axis).
+
+    Returns
+    -------
+    s : ndarray
+        The full transformed array (dense).
+    s_sparse : ndarray
+        The sparsified transformed array (zeros everywhere except top coefficients).
+    k : ndarray
+        An integer array of the same shape as x (minus the transform axis) 
+        indicating how many coefficients were kept for each vector.
+    """
+    s = linear_transform(x, Psi, axis=axis)
+ 
+    E_s = np.abs(s)**2
+    E_tot = np.sum(E_s, axis=axis, keepdims=True)
+
+    E_sorted = np.sort(E_s, axis=axis)
+    E_sorted = np.flip(E_sorted, axis=axis)
+    E_cumulative = np.cumsum(E_sorted, axis=axis)
+
+    threshold = E_tot * T
+    thres_mask = E_cumulative >= threshold
+    
+    k = np.argmax(thres_mask, axis=axis)
+    
+    k_expanded = np.expand_dims(k, axis=axis)
+    cutoff_E_val = np.take_along_axis(E_sorted, k_expanded, axis=axis)
+    idx_max = E_s >= cutoff_E_val
+    s_sparse = s * idx_max
+
+    k = k + 1
+
+    return s, s_sparse, k
+
+
+
+
+
+
+
+

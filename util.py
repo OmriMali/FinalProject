@@ -16,6 +16,14 @@ def load_image(path):
     print(f'Image loaded as a np.array with dtype: {data_array.dtype} and shape:{data_array.shape}')
     return data_array
 
+def normalize_image(I):
+    I = I.astype(np.float64)
+    max_val = max(np.abs(I.min()), np.abs(I.max()))
+    if max_val <= 1:
+        return I
+    else:
+        return I / max_val
+
 def get_bounds(arr):
     """
     Returns the min & max values in the array.
@@ -78,6 +86,37 @@ def calc_compression_ratio(I, bitstream):
 
     ratio = original_total_bits / bitstream_total_bits
     return ratio
+
+def calc_PSNR(I, I_hat):
+    """
+    Computes the Peak Signal-to-Noise Ratio (PSNR) between a ground truth image 
+    and a reconstructed image.
+
+    Formula: PSNR = 20 * log10(MAX / RMSE)
+    
+    Parameters
+    ----------
+    I : ndarray
+        Ground truth image.
+    I_hat : ndarray
+        Reconstructed image (must have same shape as I).
+
+    Returns
+    -------
+    float
+        The PSNR value in decibels (dB).
+    """
+    I = normalize_image(I)
+    I_hat = normalize_image(I_hat)
+
+    rmse = calc_RMSE(I, I_hat)
+
+    if rmse == 0:
+        return float('inf')
+    
+    psnr = 20 * np.log10(1 / rmse)
+    
+    return psnr
 
 def calc_sweep_metrics(image, images_r, bitstreams):
     """
@@ -339,57 +378,94 @@ def linear_transform(x, Psi, axis=-1):
     x_transformed = x_s @ Psi.T
     return np.moveaxis(x_transformed, -1, axis)
 
-def sparsify(x, Psi, T=0.99, axis=-1):
+def sparsify(x, Psi, T=1.0, axis=-1):
     """
-    Transforms an array x into basis Psi and retains only the largest coefficients 
-    required to preserve T% of the total energy.
+    Transforms x into basis Psi and retains coefficients based on statistical
+    thresholding relative to the mean and standard deviation of the coefficient magnitudes.
+
+    Condition to keep coefficient s_i:
+        |s_i| >= mean(|s|) + T * std(|s|)
 
     Parameters
     ----------
     x : ndarray
-        Input data array of shape (..., N, ...).
+        Input data array.
     Psi : ndarray
-        Transformation basis matrix of shape (M, N). 
+        Transformation basis matrix.
     T : float, optional
-        Energy preservation threshold (0 < T <= 1.0). 
-        Default is 0.99 (99% energy).
+        Sparsification factor. Controls the number of standard deviations above 
+        the mean required to keep a coefficient.
+        Default is 1.0.
     axis : int, optional
-        The axis along which to apply the transform. Default is -1 (last axis).
+        The axis along which to apply the transform. Default is -1.
 
     Returns
     -------
     s : ndarray
         The full transformed array (dense).
     s_sparse : ndarray
-        The sparsified transformed array (zeros everywhere except top coefficients).
+        The sparsified transformed array.
     k : ndarray
-        An integer array of the same shape as x (minus the transform axis) 
-        indicating how many coefficients were kept for each vector.
+        Integer array counting the number of kept coefficients 
+        for each vector.
     """
     s = linear_transform(x, Psi, axis=axis)
  
-    E_s = np.abs(s)**2
-    E_tot = np.sum(E_s, axis=axis, keepdims=True)
+    s_mag = np.abs(s)
 
-    E_sorted = np.sort(E_s, axis=axis)
-    E_sorted = np.flip(E_sorted, axis=axis)
-    E_cumulative = np.cumsum(E_sorted, axis=axis)
+    mu = np.mean(s_mag, axis=axis, keepdims=True)
+    sigma = np.std(s_mag, axis=axis, keepdims=True)
 
-    threshold = E_tot * T
-    thres_mask = E_cumulative >= threshold
-    
-    k = np.argmax(thres_mask, axis=axis)
-    
-    k_expanded = np.expand_dims(k, axis=axis)
-    cutoff_E_val = np.take_along_axis(E_sorted, k_expanded, axis=axis)
-    idx_max = E_s >= cutoff_E_val
-    s_sparse = s * idx_max
+    cutoff = mu + (T * sigma)
+    mask = s_mag >= cutoff
 
-    k = k + 1
+    s_sparse = s * mask
+    k = np.sum(mask, axis=axis)
 
     return s, s_sparse, k
 
+def generate_subsampling_matrix(m, n, seed=None):
+    """
+    Generates a binary measurement matrix representing random subsampling.
 
+    This matrix selects 'm' distinct components from a vector of size 'n'.
+    Each row contains exactly one '1' and 'n-1' zeros. No two rows select 
+    the same column index (sampling without replacement).
+
+    Mathematically, if y = A @ x, then y is a vector containing m randomly 
+    selected elements from x.
+
+    Parameters
+    ----------
+    m : int
+        The number of measurements (rows). Must be less than or equal to n.
+    n : int
+        The signal dimension (columns).
+    seed : int or np.random.Generator, optional
+        Seed for the random number generator to ensure reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A binary matrix of shape (m, n) with dtype=int.
+        
+    Raises
+    ------
+    ValueError
+        If m > n (cannot select more unique samples than available dimensions).
+    """
+    if m > n:
+        raise ValueError("Constraint violation: must have m ≤ n")
+
+    rng = np.random.default_rng(seed)
+
+    # Randomly choose m distinct columns
+    cols = rng.choice(n, size=m, replace=False)
+
+    A = np.zeros((m, n), dtype=int)
+    A[np.arange(m), cols] = 1
+
+    return A
 
 
 

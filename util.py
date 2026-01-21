@@ -378,6 +378,39 @@ def linear_transform(x, Psi, axis=-1):
     x_transformed = x_s @ Psi.T
     return np.moveaxis(x_transformed, -1, axis)
 
+def linear_transform_3D(f, Px, Py, Pz):
+    """
+    Applies a separable 3D linear transform to a volumetric signal.
+    
+    Parameters
+    ----------
+    f : ndarray
+        Input 3D array of shape (Nx, Ny, Nz).
+    Px : ndarray
+        Linear transform matrix for the first (x) dimension, of shape
+        (Mx, Nx).
+    Py : ndarray
+        Linear transform matrix for the second (y) dimension, of shape
+        (My, Ny).
+    Pz : ndarray
+        Linear transform matrix for the third (z) dimension, of shape
+        (Mz, Nz). The conjugate transpose is applied internally.
+
+    Returns
+    -------
+    F : ndarray
+        Transformed 3D array of shape (Mx, My, Mz).
+    """
+    F = f
+    F = np.tensordot(Px, F, axes=(1, 0))
+    F = np.tensordot(Py, F, axes=(1, 1))
+    F = np.moveaxis(F, 0, 1)
+    F = np.tensordot(Pz.conj(), F, axes=(1, 2))
+    F = np.moveaxis(F, 0, 2)
+
+    return F
+
+
 def sparsify(x, Psi, T=1.0, axis=-1):
     """
     Transforms x into basis Psi and retains coefficients based on statistical

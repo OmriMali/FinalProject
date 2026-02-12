@@ -3,6 +3,10 @@ import numpy as np
 import scipy as sp
 import csv
 import os
+import json
+from datetime import datetime
+
+### Array Handling ###
 
 def load_image(path):
     mat = sp.io.loadmat(path)
@@ -37,6 +41,8 @@ def get_bounds(arr):
     vmax = np.max(arr)
 
     return vmin, vmax
+
+### Metric Calculations ###
 
 def calc_RMSE(I, I_hat):
     
@@ -97,7 +103,7 @@ def calc_PSNR(I, I_hat):
     Parameters
     ----------
     I : ndarray
-        Ground truth image.
+        Original image.
     I_hat : ndarray
         Reconstructed image (must have same shape as I).
 
@@ -143,6 +149,8 @@ def calc_sweep_metrics(image, images_r, bitstreams):
         np.array(SAMs),
         np.array(ratios)
     )
+
+### Save Data ###
 
 def save_sweep_results(param_name, param_values,
                        RMSEs, SAMs, ratios, complexities,
@@ -350,6 +358,139 @@ def save_images(image1, name1, image2, name2, filename, directory):
     # 5. Close the figure
     plt.close(fig)
 
+def save_results(results: dict, folder_path: str):
+
+    method_name = results.get("name", "unknown_method")
+    dataset_name = results.get("dataset", "uknown_dataset")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder = os.path.join(folder_path, f"{method_name}_{dataset_name}_{timestamp}")
+    os.makedirs(folder, exist_ok=True)
+
+    reconstructed = results.get("reconstructed")
+    if reconstructed is not None:
+        np.save(os.path.join(folder, "rec_HSI"), reconstructed)
+
+    bitstream = results.get("bitstream")
+    if bitstream is not None:
+        
+        bitstream_path = os.path.join(folder, "bitstream.bin")
+        # If bitstream is bytes
+        if isinstance(bitstream, (bytes, bytearray)):
+            with open(bitstream_path, "wb") as f:
+                f.write(bitstream)
+        # If bitstream is numpy array of bits
+        elif isinstance(bitstream, np.ndarray):
+            bitstream.astype(np.uint8).tofile(bitstream_path)
+        else:
+            raise TypeError("Unsupported bitstream format")
+    
+    metadata = {
+        "name": results.get("name"),
+        "dataset": results.get("dataset"),
+        "cube_shape": results.get("cube_shape"),
+        "dtype": results.get("dtype"),
+        "metrics": results.get("metrics"),
+        "params": results.get("params")
+    }
+
+    with open(os.path.join(folder, "metadata_json"), "w") as f:
+        json.dump(metadata, f, indent=4)
+    
+    print(f"Results saved to: {folder}")
+
+### Plot Data ###
+
+def plot_log_error_heatmap(original, reconstructed, show=True):
+    """
+    Generates a log-scale spectral error heatmap between
+    original and reconstructed hyperspectral cubes.
+
+    Parameters:
+        original       : ndarray (H, W, B)
+        reconstructed  : ndarray (H, W, B)
+        show           : bool, whether to display the plot
+
+    Returns:
+        error_map_log  : ndarray (H, W)
+    """
+
+    if original.shape != reconstructed.shape:
+        raise ValueError("Original and reconstructed cubes must have same shape")
+
+    if original.ndim != 3:
+        raise ValueError("Inputs must be 3D hyperspectral cubes")
+
+    # Convert to float for safety
+    original = original.astype(np.float64)
+    reconstructed = reconstructed.astype(np.float64)
+
+    # Spectral L2 error per pixel
+    spectral_error = np.linalg.norm(original - reconstructed, axis=2)
+
+    # Log scale
+    error_map_log = np.log1p(spectral_error)
+
+    if show:
+        plt.figure(figsize=(6, 5))
+        plt.imshow(error_map_log, cmap='inferno')
+        plt.title("Log-Scale Spectral Error Heatmap")
+        plt.colorbar(label="log(1 + L2 spectral error)")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.show()
+
+    return error_map_log
+
+def plot_false_color(I, bands=(30, 20, 10), show=True):
+    """
+    Generate a false-color RGB image from a hyperspectral cube.
+
+    Parameters
+    ----------
+    I : ndarray
+        Hyperspectral image of shape (H, W, B)
+    bands : tuple of 3 ints
+        Indices of bands to use as (R, G, B)
+
+    Returns
+    -------
+    rgb: ndarray
+        RGB image of shape (H, W, 3) scaled to [0, 1]
+    """
+    I = normalize_image(I)
+    
+    H, W, B = I.shape
+    r, g, b = bands
+
+    if max(bands) >= B:
+        raise ValueError("Band index exceeds number of bands in HSI cube")
+    
+    R = I[:,:,r]
+    G = I[:,:,g]
+    B = I[:,:,b]
+
+    rgb = np.stack([R,G,B], axis=-1)
+
+    p_low, p_high = 2, 98  # percentile stretch
+
+    for i in range(3):
+        channel = rgb[:, :, i]
+        low = np.percentile(channel, p_low)
+        high = np.percentile(channel, p_high)
+        rgb[:, :, i] = np.clip((channel - low) / (high - low), 0, 1)
+
+    if show:
+        plt.figure(figsize=(6, 5))
+        plt.imshow(rgb)
+        plt.title("False Color Image")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.show()
+
+    return rgb
+
+### CS helpers ###
+
 def linear_transform(x, Psi, axis=-1):
     """
     Applies a linear transformation matrix Psi to a specific axis of the array x.
@@ -410,6 +551,26 @@ def linear_transform_3D(f, Px, Py, Pz):
 
     return F
 
+def adjoint_linear_transform_3D(Y, Px, Py, Pz):
+    """
+    Adjoint (Hermitian) of linear_transform_3D.
+    
+    Y: (Mx, My, Mz) measured
+    Px: (Mx, Nx)
+    Py: (My, Ny)
+    Pz: (Mz, Nz) – conjugate transpose used in forward
+    """
+    F = Y
+
+    F = np.moveaxis(F, 2, 0)
+    F = np.tensordot(Pz, F, axes=(0, 0))  # Pz * Y
+    F = np.moveaxis(F, 0, 2)
+    F = np.moveaxis(F, 1, 0)
+    F = np.tensordot(Py.conj().T, F, axes=(1, 0))
+    F = np.moveaxis(F, 0, 1)
+    F = np.tensordot(Px.conj().T, F, axes=(1, 0))
+
+    return F
 
 def sparsify(x, Psi, T=1.0, axis=-1):
     """

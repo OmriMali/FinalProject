@@ -268,7 +268,7 @@ class CCSDS_123:
         self.S_rec = S_rep
         return S_rep
 
-    def run(self, Image):
+    def run(self, Image, dataset_name=None):
         
         self.load(Image)
 
@@ -286,8 +286,17 @@ class CCSDS_123:
         sam = util.calc_SAM(self.S, S_rec)
         ratio = util.calc_compression_ratio(self.S, bitstream)
 
+        cube_shape = self.S.shape
+        cube_dtype = str(Image.dtype)
+
+        if dataset_name is None:
+            dataset_name = "unknown_dataset"
+
         results = {
             "name": "CCSDS_123",
+            "dataset": dataset_name,
+            "cube_shape": cube_shape,
+            "dtype": cube_dtype,
             "reconstructed": S_rec,
             "bitstream": bitstream,
             "metrics": {

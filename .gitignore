@@ -1,5 +1,30 @@
-venv/
-__pycache__/
+# --- HSI Data ---
+# Exclude the actual datasets (adjust extensions as needed)
+*.mat
+*.npy
+*.hdr
+*.img
 data/
+raw_data/
+raw/
+
+# --- Python Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+.env/
+
+# --- IDEs and OS ---
+.vscode/
 .idea/
-results/
+.DS_Store
+Thumbs.db
+
+# --- Logs and Results ---
+logs/
+results/*.csv
+results/*.png
+!results/.gitkeep

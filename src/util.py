@@ -2,6 +2,7 @@ import numpy as np
 import scipy as sp
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
+from abc import ABC, abstractmethod
 
 
 ##### HSI Handling #####
@@ -252,74 +253,86 @@ def compute_all_metrics(reference, target, bitstream):
 
 ##### Transform Bases #####
 
-class TransformBasis:
-    """
-    Abstract base class for sparsifying transforms in Compressive Sensing.
-    """
-    def __init__(self, name, axis=-1):
+class TransformBasis(ABC):
+    def __init__(self, name, transform_dtype):
         self.name = name
-        self.axis = axis
+        self.transform_dtype = transform_dtype
 
-    def forward(self, x):
-        """Map signal to sparse coefficient domain."""
-        raise NotImplementedError
+    def _get_safe_axis(self, x, axis):
+        return 0 if x.ndim == 1 else axis
+
+    @abstractmethod
+    def forward(self, x, axis=-1):
+        """Psi * x (Signal to coefficients)"""
+        pass
         
-    def inverse(self, s):
-        """Map sparse coefficients back to signal domain."""
-        raise NotImplementedError
+    @abstractmethod
+    def inverse(self, s, axis=-1):
+        """Psi_inv * s (Coefficients to signal)"""
+        pass
 
 class DFTBasis(TransformBasis):
-    """Discrete Fourier transform basis, computed with fft"""
-    def __init__(self, axis=-1):
-        super().__init__(name="DFT", axis=axis)
+    def __init__(self):
+        super().__init__(name="DFT", transform_dtype=np.complex128)
 
-    def forward(self, x):
-        return sp.fft.fft(x, axis=self.axis, norm='sqrtn')
+    def forward(self, x, axis=-1):
+        ax = self._get_safe_axis(x, axis)
+        return sp.fft.fft(x, axis=ax, norm='ortho').astype(self.transform_dtype)
 
-    def inverse(self, s):
-        return sp.fft.ifft(s, axis=self.axis, norm='sqrtn').real
+    def inverse(self, s, axis=-1):
+        ax = self._get_safe_axis(s, axis)
+        return sp.fft.ifft(s, axis=ax, norm='ortho').astype(self.transform_dtype)
+    
+class DCTBasis(TransformBasis):
+    def __init__(self):
+        super().__init__(name="DCT", transform_dtype=np.float64)
+
+    def forward(self, x, axis=-1):
+        ax = self._get_safe_axis(x, axis)
+        return sp.fft.dct(x, axis=ax, type=2, norm='ortho').astype(self.transform_dtype)
+
+    def inverse(self, s, axis=-1):
+        ax = self._get_safe_axis(s, axis)
+        return sp.fft.idct(s, axis=ax, type=2, norm='ortho').astype(self.transform_dtype)
 
 ##### Measurement Matrices #####
 
-class MeasurementMatrix:
-    """
-    Abstract base class for CS Measurement Matrices (Phi).
-    """
-    def __init__(self, name, m, n, axis):
+class MeasurementMatrix(ABC):
+    def __init__(self, name):
         self.name = name
-        self.m = m  # Number of measurements
-        self.n = n  # Original signal dimension along the target axis
-        self.axis = axis
 
-    def project(self, x):
-        """Perform y = Phi @ x along the specified axis."""
-        raise NotImplementedError
+    def _get_safe_axis(self, x, axis):
+        return 0 if x.ndim == 1 else axis
+
+    @abstractmethod
+    def forward(self, x, axis):
+        """Perform y = Phi @ x."""
+        pass
+
+    @abstractmethod
+    def adjoint(self, y, axis, n):
+        """x_approx = Phi^T * y"""
+        pass
 
 class SubsamplingMatrix(MeasurementMatrix):
-    """
-    Subsampling Measurement Matrix that picks M indices along a specific axis.
-    """
-    def __init__(self, axis=-1, seed=42):
-        super().__init__(name="Subsampling", axis=axis)
-        self.seed = seed
-        self.indices = None
-        self.m = None
-        self.n = None
-        self.axis=axis
-
-    def initialize(self, n, m, axis=-1):
-        """Explicitly set dimensions and axis. Generate indices based on seed."""
-        self.axis = axis
+    def __init__(self, n, m, seed=42):
+        super().__init__(name="Subsampling")
         self.n = n
         self.m = m
-        rng = np.random.RandomState(self.seed)
+        self.seed = seed
+        rng = np.random.RandomState(seed)
         self.indices = np.sort(rng.choice(n, m, replace=False))
 
-    def project(self, x):
-        if self.indices is None:
-            raise RuntimeError("Phi not initialized. Call initialize(n, m) first.")
-        return np.take(x, self.indices, axis=self.axis)
-
+    def forward(self, x, axis):
+        ax = self._get_safe_axis(x, axis)
+        return np.take(x, self.indices, axis=ax)
+    
+    def adjoint(self, y, axis, n):
+            ax = self._get_safe_axis(y, axis)
+            out_dtype = np.result_type(y.dtype, np.float64)
+            res = np.zeros(n, dtype=out_dtype)
+            res[self.indices] = y
+            return res
 
 ##### Bitstream Packing #####
 
@@ -333,7 +346,6 @@ def pack_to_bit_depth(data, bit_depth):
     
     for value in flat_data:
         # Convert integer to bitarray of length bit_depth
-        # Using endian='big' ensures the most significant bit is first
         ba.extend(int2ba(int(value), length=bit_depth, endian='big'))
     
     return ba.tobytes()
@@ -351,183 +363,9 @@ def unpack_from_bit_depth(byte_stream, bit_depth, shape):
     for i in range(total_elements):
         start = i * bit_depth
         end = start + bit_depth
-        unpacked[i] = ba2int(ba[start:end], endian='big')
+        unpacked[i] = ba2int(ba[start:end])
         
     return unpacked.reshape(shape)
-
-### CS helpers ###
-
-def linear_transform(x, Psi, axis=-1):
-    """
-    Applies a linear transformation matrix Psi to a specific axis of the array x.
-    
-    This function implements the operation y = Psi * v for every vector v 
-    located along the specified axis of x.
-
-    Parameters
-    ----------
-    x : ndarray
-        Input array of shape (..., N, ...).
-    Psi : ndarray
-        Transformation matrix of shape (M, N).
-        Note: The second dimension of Psi (N) must match the size of x 
-        along the specified axis.
-    axis : int, optional
-        The axis along which to apply the transformation. Default is -1.
-
-    Returns
-    -------
-    ndarray
-        Transformed array of shape (..., M, ...), where the size of the 
-        specified axis has changed from N to M.
-    """
-    x_s = np.moveaxis(x, axis, -1)
-    x_transformed = x_s @ Psi.T
-    return np.moveaxis(x_transformed, -1, axis)
-
-def linear_transform_3D(f, Px, Py, Pz):
-    """
-    Applies a separable 3D linear transform to a volumetric signal.
-    
-    Parameters
-    ----------
-    f : ndarray
-        Input 3D array of shape (Nx, Ny, Nz).
-    Px : ndarray
-        Linear transform matrix for the first (x) dimension, of shape
-        (Mx, Nx).
-    Py : ndarray
-        Linear transform matrix for the second (y) dimension, of shape
-        (My, Ny).
-    Pz : ndarray
-        Linear transform matrix for the third (z) dimension, of shape
-        (Mz, Nz). The conjugate transpose is applied internally.
-
-    Returns
-    -------
-    F : ndarray
-        Transformed 3D array of shape (Mx, My, Mz).
-    """
-    F = f
-    F = np.tensordot(Px, F, axes=(1, 0))
-    F = np.tensordot(Py, F, axes=(1, 1))
-    F = np.moveaxis(F, 0, 1)
-    F = np.tensordot(Pz.conj(), F, axes=(1, 2))
-    F = np.moveaxis(F, 0, 2)
-
-    return F
-
-def adjoint_linear_transform_3D(Y, Px, Py, Pz):
-    """
-    Adjoint (Hermitian) of linear_transform_3D.
-    
-    Y: (Mx, My, Mz) measured
-    Px: (Mx, Nx)
-    Py: (My, Ny)
-    Pz: (Mz, Nz) – conjugate transpose used in forward
-    """
-    F = Y
-
-    F = np.moveaxis(F, 2, 0)
-    F = np.tensordot(Pz, F, axes=(0, 0))  # Pz * Y
-    F = np.moveaxis(F, 0, 2)
-    F = np.moveaxis(F, 1, 0)
-    F = np.tensordot(Py.conj().T, F, axes=(1, 0))
-    F = np.moveaxis(F, 0, 1)
-    F = np.tensordot(Px.conj().T, F, axes=(1, 0))
-
-    return F
-
-def sparsify(x, Psi, T=1.0, axis=-1):
-    """
-    Transforms x into basis Psi and retains coefficients based on statistical
-    thresholding relative to the mean and standard deviation of the coefficient magnitudes.
-
-    Condition to keep coefficient s_i:
-        |s_i| >= mean(|s|) + T * std(|s|)
-
-    Parameters
-    ----------
-    x : ndarray
-        Input data array.
-    Psi : ndarray
-        Transformation basis matrix.
-    T : float, optional
-        Sparsification factor. Controls the number of standard deviations above 
-        the mean required to keep a coefficient.
-        Default is 1.0.
-    axis : int, optional
-        The axis along which to apply the transform. Default is -1.
-
-    Returns
-    -------
-    s : ndarray
-        The full transformed array (dense).
-    s_sparse : ndarray
-        The sparsified transformed array.
-    k : ndarray
-        Integer array counting the number of kept coefficients 
-        for each vector.
-    """
-    s = linear_transform(x, Psi, axis=axis)
- 
-    s_mag = np.abs(s)
-
-    mu = np.mean(s_mag, axis=axis, keepdims=True)
-    sigma = np.std(s_mag, axis=axis, keepdims=True)
-
-    cutoff = mu + (T * sigma)
-    mask = s_mag >= cutoff
-
-    s_sparse = s * mask
-    k = np.sum(mask, axis=axis)
-
-    return s, s_sparse, k
-
-def generate_subsampling_matrix(m, n, seed=None):
-    """
-    Generates a binary measurement matrix representing random subsampling.
-
-    This matrix selects 'm' distinct components from a vector of size 'n'.
-    Each row contains exactly one '1' and 'n-1' zeros. No two rows select 
-    the same column index (sampling without replacement).
-
-    Mathematically, if y = A @ x, then y is a vector containing m randomly 
-    selected elements from x.
-
-    Parameters
-    ----------
-    m : int
-        The number of measurements (rows). Must be less than or equal to n.
-    n : int
-        The signal dimension (columns).
-    seed : int or np.random.Generator, optional
-        Seed for the random number generator to ensure reproducibility.
-
-    Returns
-    -------
-    ndarray
-        A binary matrix of shape (m, n) with dtype=int.
-        
-    Raises
-    ------
-    ValueError
-        If m > n (cannot select more unique samples than available dimensions).
-    """
-    if m > n:
-        raise ValueError("Constraint violation: must have m ≤ n")
-
-    rng = np.random.default_rng(seed)
-
-    # Randomly choose m distinct columns
-    cols = rng.choice(n, size=m, replace=False)
-
-    A = np.zeros((m, n), dtype=int)
-    A[np.arange(m), cols] = 1
-
-    return A
-
-
 
 
 

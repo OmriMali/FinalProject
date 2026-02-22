@@ -102,7 +102,7 @@ class DataLogger:
         """
         headers = [
             "run_id", "timestamp", "dataset", 
-            "rmse", "sam_deg", "compression_ratio",
+            "rmse", "psnr_db", "sam_deg", "compression_ratio",
             "comp_time_s", "decomp_time_s"
         ] + list(param_keys)
         

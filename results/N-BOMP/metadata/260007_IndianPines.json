@@ -1,0 +1,19 @@
+{
+    "y_shape": [
+        84,
+        84,
+        116
+    ],
+    "hsi_shape": [
+        145,
+        145,
+        200
+    ],
+    "min_val": 955.0,
+    "max_val": 9604.0,
+    "bit_depth": 14,
+    "params": {
+        "targetCR": 5,
+        "S": 80
+    }
+}

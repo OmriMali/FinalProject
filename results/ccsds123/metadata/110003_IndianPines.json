@@ -1,0 +1,16 @@
+{
+    "shape": [
+        145,
+        145,
+        200
+    ],
+    "smin": 955,
+    "smax": 9604,
+    "params": {
+        "local_sum_mode": "column",
+        "P": 1,
+        "Omega": 8,
+        "a": 2,
+        "block_size": 32
+    }
+}

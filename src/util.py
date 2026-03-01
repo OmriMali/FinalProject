@@ -333,7 +333,40 @@ class SubsamplingMatrix(MeasurementMatrix):
             res = np.zeros(n, dtype=out_dtype)
             res[self.indices] = y
             return res
+    
+class GaussianMeasurementMatrix(MeasurementMatrix):
+    """
+    Implements a Gaussian random measurement matrix Phi where entries 
+    are i.i.d. N(0, 1/m).
+    """
+    def __init__(self, n, m, seed=42):
+        super().__init__(name="Gaussian")
+        self.n = n
+        self.m = m
+        rng = np.random.RandomState(seed)
+        # Normalize by sqrt(m) to maintain approximate unit-norm columns
+        self.matrix = rng.randn(m, n) / np.sqrt(m)
 
+    def forward(self, x, axis):
+        """Perform y = Phi @ x along the specified axis."""
+        ax = self._get_safe_axis(x, axis)
+        x_swapped = np.moveaxis(x, ax, 0)
+        shape_orig = x_swapped.shape
+        x_flat = x_swapped.reshape(self.n, -1)
+        y_flat = self.matrix @ x_flat
+        y_swapped = y_flat.reshape(self.m, *shape_orig[1:])
+        return np.moveaxis(y_swapped, 0, ax)
+
+    def adjoint(self, y, axis, n):
+        """Perform x_approx = Phi^T @ y."""
+        ax = self._get_safe_axis(y, axis)
+        y_swapped = np.moveaxis(y, ax, 0)
+        shape_orig = y_swapped.shape
+        y_flat = y_swapped.reshape(self.m, -1)
+        x_flat = self.matrix.T @ y_flat
+        x_swapped = x_flat.reshape(n, *shape_orig[1:])
+        return np.moveaxis(x_swapped, 0, ax)
+            
 ##### Bitstream Packing #####
 
 def pack_to_bit_depth(data, bit_depth):

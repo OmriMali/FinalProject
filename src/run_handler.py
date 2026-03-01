@@ -27,7 +27,7 @@ class RunHandler:
         self.compressor = compressor
         self.logger = logger
 
-    def run_experiment(self, hsi, dataset_name="unknown", save_bitstream=True, save_reconstruction=True):
+    def run_experiment(self, hsi, dataset_name="unknown", save_bitstream=False, save_reconstruction=False):
         """
         Execute a full compression-decompression cycle and evaluate performance.
 

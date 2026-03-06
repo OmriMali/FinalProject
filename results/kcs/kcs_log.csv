@@ -1,3 +1,2 @@
 run_id,timestamp,dataset,rmse,psnr_db,sam_deg,compression_ratio,comp_time_s,decomp_time_s,targetCR,K
-250001,2026-02-27 15:43:25,IndianPines,nan,nan,nan,5.137472e+00,1.7435,18.0662,5,50
-250002,2026-02-27 15:45:20,IndianPines,2.422703e+03,1.660187e+01,2.655144e+01,5.137472e+00,1.7326,19.0004,5,50
+250001,2026-03-06 12:05:56,IndianPines,5.365507e+02,2.969565e+01,9.089099e+00,5.137472e+00,1.8361,28.3715,5,50

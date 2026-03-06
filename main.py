@@ -11,7 +11,7 @@ import time
 
 # # 1. Setup components
 # compressor = HCS1D(targetCR=3, axis=-1, measurement_matrix="Subsampling", trasnform_basis="DFT")
-compressor = NBOMP(targetCR=5, sparsity_S=150)
+compressor = KCSCompressor(targetCR=5)
 logger = DataLogger(compressor_name=compressor.name, compressor_id=compressor.compressor_id, base_dir="results")
 handler = RunHandler(compressor, logger)
 

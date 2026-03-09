@@ -366,7 +366,103 @@ class GaussianMeasurementMatrix(MeasurementMatrix):
         x_flat = self.matrix.T @ y_flat
         x_swapped = x_flat.reshape(n, *shape_orig[1:])
         return np.moveaxis(x_swapped, 0, ax)
+
+##### Sensing Operators #####
+
+class SensingOperator:
+    """
+    Chains a MeasurementMatrix (Phi) and a TransformBasis (Psi) 
+    into a single operator A = Phi @ Psi_inv.
+    
+    This class adheres to the LinearOperator-like interface required 
+    for sparse recovery algorithms.
+    """
+    
+    def __init__(self, phi, psi, n):
+        self.phi = phi
+        self.psi = psi
+        self.n = n
+        self.dtype = psi.transform_dtype
+
+    def forward(self, s):
+        """Coefficients 's' to measurements 'y': y = Phi(Psi_inv(s))"""
+        return self.phi.forward(self.psi.inverse(s, axis=0), axis=0)
+
+    def adjoint(self, y):
+        """Measurements 'y' to coefficients 's_approx': s = Psi(Phi_adj(y))"""
+        return self.psi.forward(self.phi.adjoint(y, axis=0, n=self.n), axis=0)
+
+    def get_column(self, idx):
+        """Extracts the i-th column of the operator A."""
+        e_i = np.zeros(self.n, dtype=self.dtype)
+        e_i[idx] = 1.0
+        return self.forward(e_i)
+
+##### Sparse Recovery Algorithms #####
+
+def gomp(y, operator, K, N, eps=1e-6):
+    """
+    Generalized Orthogonal Matching Pursuit (gOMP) implementation.
+
+    Parameters
+    ----------
+    y : numpy.ndarray
+        The measurement vector (m,).
+    operator : SensingOperator
+        The operator A providing .forward(), .adjoint(), and .get_column().
+    K : int
+        Target sparsity (max number of atoms to select).
+    N : int
+        Step size (number of atoms to select per iteration).
+    eps : float
+        Convergence threshold for the residual norm.
+
+    Returns
+    -------
+    s_hat : numpy.ndarray
+        The reconstructed sparse coefficient vector (n,).
+    """
+    m = y.shape[0]
+    n = operator.n
+    
+    # Initialize
+    k = 0
+    r = y.copy().astype(operator.dtype)
+    Lambda = set()
+    s_ls = np.array([])
+    Lambda_list = []
+
+    # Optimization Loop
+    while np.linalg.norm(r) > eps and k < min(K, m // N):
+        k += 1
+        
+        # 1. Identification: Correlation between residual and atoms
+        correlations = np.abs(operator.adjoint(r))
+        
+        # Mask already selected indices to prevent re-selection
+        if len(Lambda) > 0:
+            correlations[list(Lambda)] = -1.0
             
+        # 2. Selection: Get N best indices
+        new_indices = np.argsort(correlations)[-N:]
+        Lambda.update(new_indices)
+        Lambda_list = sorted(list(Lambda))
+        
+        # 3. Estimation: Least Squares on the sub-dictionary
+        A_Lambda = np.column_stack([operator.get_column(i) for i in Lambda_list])
+        s_ls, _, _, _ = np.linalg.lstsq(A_Lambda, y, rcond=None)
+        
+        # 4. Residual Update
+        r = y - (A_Lambda @ s_ls)
+        
+    # Build full output vector
+    s_hat = np.zeros(n, dtype=operator.dtype)
+    if s_ls.size > 0:
+        s_hat[Lambda_list] = s_ls
+        
+    return s_hat
+
+
 ##### Bitstream Packing #####
 
 def pack_to_bit_depth(data, bit_depth):

@@ -4,22 +4,6 @@ import numpy as np
 from scipy.sparse.linalg import LinearOperator
 import spgl1
 
-def get_A(phi, psi, n, m):
-    """
-    Creates a 1D LinearOperator for a single pixel (spectral vector).
-    A = Phi @ Psi_inv
-    """
-    def forward_pass(s):
-        x = psi.inverse(s, axis=0)
-        y = phi.forward(x, axis=0)
-        return y
-
-    def adjoint_pass(y):
-        x_adj = phi.adjoint(y, axis=0, n=n)
-        s_adj = psi.forward(x_adj, axis=0)
-        return s_adj.astype(psi.transform_dtype)
-
-    return LinearOperator((m, n), matvec=forward_pass, rmatvec=adjoint_pass, dtype=psi.transform_dtype)
 
 class HCS1D(BaseCompressor):
     
@@ -44,6 +28,8 @@ class HCS1D(BaseCompressor):
         self.Phi_name = measurement_matrix
         self.Psi_name = trasnform_basis
         self.seed = seed
+        self.K = 30
+        self.N = 5
         
     @classmethod
     def print_available_components(cls):
@@ -123,7 +109,7 @@ class HCS1D(BaseCompressor):
         n = metadata["hsi_shape"][self.axis]
         m = metadata["y_shape"][self.axis]
         Phi, Psi = self._setup_operators(n)
-        A = get_A(Phi, Psi, n, m)
+        A = util.SensingOperator(Phi, Psi, n)
 
         # 3. Reconstruction Setup
         y_flat = y.reshape(-1, m)
@@ -132,7 +118,8 @@ class HCS1D(BaseCompressor):
 
         # 4. Reconstruction Loop
         for i in range(num_pixels):
-            s_recon, resid, grad, info = spgl1.spg_bpdn(A, y_flat[i], sigma=0.01, iter_lim=100, verbosity=0)
+            # s_recon, resid, grad, info = spgl1.spg_bpdn(A, y_flat[i], sigma=0.01, iter_lim=100, verbosity=0)
+            s_recon = util.gomp(y_flat[i], A, K=self.K, N=self.N)
             s_hat_flat[i] = s_recon
             self.progress_callback(i / num_pixels)
         

@@ -28,3 +28,4 @@ logs/
 results/*.csv
 results/*.png
 !results/.gitkeep
+results/

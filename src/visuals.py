@@ -77,3 +77,43 @@ def compare_reconstructions_by_paths(paths, band_idx, titles=None):
         rendered_list.append(render_band(cube, band_idx))
     
     show_images(rendered_list, titles=final_titles)
+
+
+##### Data Manipulation ######
+
+def to_false_color(hsi: np.ndarray, bands: list = None) -> np.ndarray:
+    """
+    Converts a Hyperspectral cube into an RGB false-color image.
+    
+    Args:
+        hsi: Input cube of shape (H, W, C).
+        bands: Optional list of 3 indices [R, G, B]. 
+               Defaults to 30%, 50%, and 70% of the spectral range.
+               
+    Returns:
+        Normalized RGB image of shape (H, W, 3) in range [0, 1].
+    """
+    num_bands = hsi.shape[2]
+    
+    # 1. Default band selection (evenly spaced through the cube)
+    if bands is None:
+        bands = [int(num_bands * 0.3), int(num_bands * 0.5), int(num_bands * 0.7)]
+    
+    if len(bands) != 3:
+        raise ValueError("The 'bands' argument must contain exactly 3 indices.")
+
+    # 2. Extract and handle potential complex values (e.g., from FFT)
+    rgb = hsi[:, :, bands].real.astype(np.float32)
+    
+    # 3. Per-band Normalization
+    # We normalize each channel individually to [0, 1] to ensure 
+    # the image "pops" regardless of the original data's bit-depth.
+    for i in range(3):
+        channel = rgb[:, :, i]
+        c_min, c_max = channel.min(), channel.max()
+        
+        # Avoid division by zero for empty/flat bands
+        denom = (c_max - c_min) + 1e-8
+        rgb[:, :, i] = (channel - c_min) / denom
+        
+    return rgb

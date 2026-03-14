@@ -1,5 +1,6 @@
 import numpy as np
 import scipy as sp
+import matplotlib.pyplot as plt
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 from abc import ABC, abstractmethod
@@ -497,6 +498,109 @@ def unpack_from_bit_depth(byte_stream, bit_depth, shape):
         
     return unpacked.reshape(shape)
 
+##### Transform analysis #####
 
+def transform_metrics(hsi, transforms, coeffs=[0.1, 0.2, 0.3, 0.4, 0.5]):
+    """
+    Analyzes the sparsity of a Hyperspectral Image (HSI) by applying specific 
+    basis transforms, thresholding coefficients, and measuring reconstruction quality.
 
+    Args:
+        hsi (np.ndarray): The input hyperspectral data cube.
+        transforms (list): A list of tuples, e.g., [("DFT", 0, 1), ("DCT", 2)], 
+                           where the first element is the basis name and the 
+                           following are the axes to transform.
+        coeffs (list of float): Percentages (0.0 to 1.0) of the largest 
+                                coefficients to keep.
 
+    Returns:
+        dict: A dictionary containing lists of 'rmse', 'psnr', 'sam', and 'coeffs'.
+    """
+    BASIS_MAP = {"DFT": DFTBasis(), "DCT": DCTBasis()}
+
+    maxval, minval, depth = get_hsi_statistics(hsi)
+    norm_hsi = normalize_zero_mean(hsi, minval, maxval)
+
+    # 1. Forward Transforms
+    transformed_hsi = norm_hsi.copy()
+    for transform_name, *axes in transforms:
+        for axis in axes:
+            transformed_hsi = BASIS_MAP[transform_name].forward(transformed_hsi, axis)
+
+    results = {"rmse": [], "psnr": [], "sam": [], "coeffs": coeffs, "transforms": transforms}
+
+    # 2. Iterate through sparsity levels
+    # Flatten to easily find the magnitude threshold
+    flat_coeffs = transformed_hsi.flatten()
+    abs_weights = np.abs(flat_coeffs)
+
+    for p in coeffs:
+        # Determine how many coefficients to keep
+        n_keep = int(p * abs_weights.size)
+        
+        if n_keep < abs_weights.size:
+            # Find the threshold value at the (1-p) percentile
+            threshold = np.partition(abs_weights, -n_keep)[-n_keep]
+            # Zero out elements below threshold
+            sparse_hsi = np.where(np.abs(transformed_hsi) >= threshold, transformed_hsi, 0)
+        else:
+            sparse_hsi = transformed_hsi.copy()
+            
+        # 3. Inverse Transforms (Apply in REVERSE order of the forward transforms)
+        reconstructed = sparse_hsi
+        for transform_name, *axes in reversed(transforms):
+            for axis in reversed(axes):
+                reconstructed = BASIS_MAP[transform_name].inverse(reconstructed, axis)
+
+        rec = denormalize_zero_mean(reconstructed, minval, maxval).real
+        
+        # 4. Evaluation
+        # We compare against norm_hsi (the transformed/untransformed reference)
+        results["rmse"].append(calc_rmse(hsi, rec))
+        results["psnr"].append(calc_psnr(hsi, rec, depth))
+        results["sam"].append(calc_sam(hsi, rec))
+        
+    return results
+
+def plot_transform_metrics(all_results):
+    """
+    Plots RMSE, PSNR, and SAM trends for multiple transform configurations.
+
+    Args:
+        all_results (list of dict): A list where each dict contains 'rmse', 'psnr', 
+                                   'sam', 'coeffs', and 'transforms'.
+    """
+    if isinstance(all_results, dict):
+        all_results = [all_results]
+
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+    fig.suptitle("HSI Reconstruction Quality Comparison", fontsize=16, fontweight='bold')
+
+    metrics = [("rmse", "RMSE"), 
+               ("sam", "SAM"),
+               ("psnr", "PSNR")]
+
+    colors = plt.cm.tab10.colors 
+
+    for idx, res in enumerate(all_results):
+        x = [c * 100 for c in res["coeffs"]]
+        
+        # Build label: "DFT (0, 1)"
+        label_parts = []
+        for name, *axs in res.get("transforms", [("Unknown",)]):
+            label_parts.append(f"{name} {tuple(axs)}")
+        label = " | ".join(label_parts)
+        
+        color = colors[idx % len(colors)]
+
+        for i, (key, title) in enumerate(metrics):
+            axes[i].plot(x, res[key], marker='o', markersize=5, 
+                         linestyle='-', color=color, label=label)
+            axes[i].set_title(title, fontsize=13)
+            axes[i].set_xlabel("% of Coefficients Kept")
+            axes[i].grid(True, linestyle='--', alpha=0.6)
+            # Show legend in each individual plot
+            axes[i].legend(fontsize='small')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()

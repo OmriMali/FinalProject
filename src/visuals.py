@@ -11,7 +11,7 @@ def load_reconstruction(path):
     
 ##### Image Rendering #####
 
-def render_band(hsi, band_idx):
+def render_band(hsi, band_idx=0):
     """
     Converts a raw HSI band into a normalized 2D image array.
     

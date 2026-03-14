@@ -16,7 +16,7 @@ class Sparsity:
 
         os.makedirs(self.dir_path, exist_ok=True)
 
-    def analyze(self, basis, hsi: np.ndarray, name: str = "Uknown", axis: int = -1, T: float = 1.0) -> Dict:
+    def analyze(self, basis, hsi: np.ndarray, name: str = "Unknown", axis: int = -1, T: float = 1.0) -> Dict:
         
         # 0. Normalize
         min_val, max_val, bit_depth = util.get_hsi_statistics(hsi)

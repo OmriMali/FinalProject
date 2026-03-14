@@ -1,2 +1,0 @@
-run_id,timestamp,dataset,rmse,psnr_db,sam_deg,compression_ratio,comp_time_s,decomp_time_s,transform basis,measurement matrix,seed,target CR,compression axis
-210001,2026-02-22 14:04:01,IndianPines,6.553823e+02,2.795798e+01,1.198665e+01,3.030302e+00,1.3095,423.9607,DFT,Subsampling,42,3,Spectral

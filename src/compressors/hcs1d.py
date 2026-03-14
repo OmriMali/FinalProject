@@ -12,7 +12,7 @@ class HCS1D(BaseCompressor):
     MEASUREMENT_MAP = {"Subsampling": util.SubsamplingMatrix}
 
     # Map axis to spatial\spectral
-    AXIS_MAP = ["Horizontal", "Vertical", "Spectral"]
+    AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
     @property
     def name(self): return "hcs1d"

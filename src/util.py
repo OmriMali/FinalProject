@@ -4,10 +4,12 @@ from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 from abc import ABC, abstractmethod
 
-
 ##### HSI Handling #####
 
 def load_hsi(path):
+    """
+    Load an HSI as a numpy array, indexed as [y, x, z] <-> [vertical, horizontal, spectral]
+    """
     mat = sp.io.loadmat(path)
     mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
 
@@ -461,7 +463,6 @@ def gomp(y, operator, K, N, eps=1e-6):
         s_hat[Lambda_list] = s_ls
         
     return s_hat
-
 
 ##### Bitstream Packing #####
 

@@ -1,58 +1,116 @@
-from src.compressors.ccsds123 import CCSDS123
-from src.compressors.hcs1d import HCS1D
-from src.compressors.KCS import KCSCompressor
-from src.compressors.NBOMP import NBOMP
-from src.compressors.sparserep import SparseRep
-from src.run_handler import RunHandler
-from src.logger import DataLogger
 from src import util
 from src import visuals
-from src.sparse import Sparsity
+from src.recovery_algorithms import kronecker_omp
 import numpy as np
-import time
+import scipy as sp
 import matplotlib.pyplot as plt
 
-orig = util.load_hsi("raw\\Indian_pines_corrected.mat")
 
+def generate_gaussian_matrix(p, n):
+    """
+    Generates a (p, n) Gaussian random matrix.
+    """
+    matrix = np.random.randn(p, n)
+
+    return matrix
+
+def generate_subsampling_matrix(p, n):
+    """
+    Generates a (p, n) matrix where each row has exactly one '1', 
+    and the index of the '1' is unique for every row.
+    """
+    if p > n:
+        raise ValueError(f"Cannot have unique indices: rows (p={p}) > columns (n={n})")
+
+    # 1. Initialize a zero matrix
+    matrix = np.zeros((p, n))
+    
+    # 2. Generate a list of all possible column indices and shuffle them
+    # This ensures that once an index is picked, it won't be picked again
+    col_indices = np.arange(n)
+    np.random.shuffle(col_indices)
+    
+    # 3. Take the first p shuffled indices (one for each row)
+    selected_indices = col_indices[:p]
+    
+    # 4. Use advanced indexing to set the chosen positions to 1
+    # np.arange(p) targets each row, selected_indices targets the unique columns
+    matrix[np.arange(p), selected_indices] = 1.0
+    
+    return matrix
+
+def generate_dct_matrix(n):
+    return sp.fft.dct(np.eye(n), axis=0, norm='ortho')
+
+def generate_idct_matrix(n):
+    return sp.fft.idct(np.eye(n), axis=0, norm='ortho')
+
+
+orig = util.load_hsi("raw\\Indian_pines_corrected.mat")
+orig = orig[:64, :64, :64]
 minval, maxval, depth = util.get_hsi_statistics(orig)
 norm_orig = util.normalize_zero_mean(orig, minval, maxval)
+shape = norm_orig.shape
 
-dct = util.DCTBasis()
-axes = [0, 1, 2]
 
-trans = norm_orig.copy()
-for ax in axes:
-    trans = dct.forward(trans, axis=ax)
+sr = 0.5
+Phi_0 = generate_subsampling_matrix(int(sr*shape[0]), shape[0])
+Phi_1 = generate_subsampling_matrix(int(sr*shape[1]), shape[1])
+Phi_2 = np.eye(shape[2])
 
-max_trans = np.max(np.abs(trans))
-norm_trans = (trans + max_trans) / (2 * max_trans)      # normalization to [0, 1]
+# Psi_0 = util.DCTBasis().inverse(np.eye(shape[0]), 0)
+# Psi_1 = util.DCTBasis().inverse(np.eye(shape[1]), 0)
+# Psi_2 = util.DCTBasis().inverse(np.eye(shape[2]), 0)
+Psi_0 = generate_idct_matrix(shape[0])
+Psi_1 = generate_idct_matrix(shape[1])
+Psi_2 = generate_idct_matrix(shape[2])
 
-max_int = (1 << depth) - 1
-quant = np.clip(np.round(norm_trans * max_int).astype(np.uint64), 0, max_int)
 
-norm_trans_rec = (quant.astype(np.float64) / max_int)
-trans_rec = norm_trans_rec * 2 * max_trans - max_trans
+Phis = [Phi_0, Phi_1, Phi_2]
+Psis = [Psi_0, Psi_1, Psi_2]
+Ds = []
 
-norm_rec = trans_rec.copy()
-for ax in axes:
-    norm_rec = dct.inverse(norm_rec, axis=ax)
+for n in range(len(Phis)):
+    D = Phis[n] @ Psis[n]
 
-rec = util.denormalize_zero_mean(norm_rec, minval, maxval)
+    # Optionally normalize columns to exactly 1
+    col_norms = np.linalg.norm(D, axis=0)
+    print(f"D_{n} column norms min/max: {col_norms.min():.6f}/{col_norms.max():.6f}")
+    D /= col_norms
 
+    Ds.append(D)
+
+Y = norm_orig.copy()
+for n in range(len(Phis)):
+    Y = util.mode_n_product(Y, Phis[n], n)
+
+mu, k_bound = util.analyze_dictionary_coherence(Ds[0])
+print(f'Coherence: {mu}  |  K < {k_bound}')
+
+
+Is, a = kronecker_omp(Ds, Y, 2000)
+
+X = np.zeros_like(norm_orig)
+for j in range(len(a)):
+    coord = tuple(Is[n][j] for n in range(len(Is)))
+    X[coord] = a[j]
+
+Z = X.copy()
+for n in range(len(Psis)):
+    Z = util.mode_n_product(Z, Psis[n], n)
+
+
+rec = util.denormalize_zero_mean(Z, minval, maxval)
 print(f'RMSE: {util.calc_rmse(rec, orig)}')
-print(f'PSNR: {util.calc_psnr(rec, orig, depth)}')
 print(f'SAM: {util.calc_sam(rec, orig)}')
+print(f'PSNR: {util.calc_psnr(rec, orig, depth)}')
 
-bands = [80]
 plt.figure()
-for i, b in enumerate(bands):
-    plt.subplot(i+1, 3, 1 + 3*i)
-    plt.imshow(orig[:,:,b], cmap='gray')
-    plt.subplot(i+1, 3, 2 + 3*i)
-    plt.imshow(trans[:,:,b], cmap='gray')
-    plt.subplot(i+1, 3, 3 + 3*i)
-    plt.imshow(rec[:,:,b], cmap='gray')
-
-plt.tight_layout()
+origrgb = visuals.to_false_color(orig)
+recrgb = visuals.to_false_color(rec)
+plt.subplot(1, 2, 1)
+plt.imshow(origrgb)
+plt.subplot(1, 2, 2)
+plt.imshow(recrgb)
 plt.show()
 

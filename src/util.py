@@ -298,6 +298,7 @@ class DCTBasis(TransformBasis):
         ax = self._get_safe_axis(s, axis)
         return sp.fft.idct(s, axis=ax, type=2, norm='ortho').astype(self.transform_dtype)
 
+
 ##### Measurement Matrices #####
 
 class MeasurementMatrix(ABC):
@@ -370,6 +371,7 @@ class GaussianMeasurementMatrix(MeasurementMatrix):
         x_swapped = x_flat.reshape(n, *shape_orig[1:])
         return np.moveaxis(x_swapped, 0, ax)
 
+
 ##### Sensing Operators #####
 
 class SensingOperator:
@@ -400,70 +402,6 @@ class SensingOperator:
         e_i = np.zeros(self.n, dtype=self.dtype)
         e_i[idx] = 1.0
         return self.forward(e_i)
-
-##### Sparse Recovery Algorithms #####
-
-def gomp(y, operator, K, N, eps=1e-6):
-    """
-    Generalized Orthogonal Matching Pursuit (gOMP) implementation.
-
-    Parameters
-    ----------
-    y : numpy.ndarray
-        The measurement vector (m,).
-    operator : SensingOperator
-        The operator A providing .forward(), .adjoint(), and .get_column().
-    K : int
-        Target sparsity (max number of atoms to select).
-    N : int
-        Step size (number of atoms to select per iteration).
-    eps : float
-        Convergence threshold for the residual norm.
-
-    Returns
-    -------
-    s_hat : numpy.ndarray
-        The reconstructed sparse coefficient vector (n,).
-    """
-    m = y.shape[0]
-    n = operator.n
-    
-    # Initialize
-    k = 0
-    r = y.copy().astype(operator.dtype)
-    Lambda = set()
-    s_ls = np.array([])
-    Lambda_list = []
-
-    # Optimization Loop
-    while np.linalg.norm(r) > eps and k < min(K, m // N):
-        k += 1
-        
-        # 1. Identification: Correlation between residual and atoms
-        correlations = np.abs(operator.adjoint(r))
-        
-        # Mask already selected indices to prevent re-selection
-        if len(Lambda) > 0:
-            correlations[list(Lambda)] = -1.0
-            
-        # 2. Selection: Get N best indices
-        new_indices = np.argsort(correlations)[-N:]
-        Lambda.update(new_indices)
-        Lambda_list = sorted(list(Lambda))
-        
-        # 3. Estimation: Least Squares on the sub-dictionary
-        A_Lambda = np.column_stack([operator.get_column(i) for i in Lambda_list])
-        s_ls, _, _, _ = np.linalg.lstsq(A_Lambda, y, rcond=None)
-        
-        # 4. Residual Update
-        r = y - (A_Lambda @ s_ls)
-        
-    # Build full output vector
-    s_hat = np.zeros(n, dtype=operator.dtype)
-    if s_ls.size > 0:
-        s_hat[Lambda_list] = s_ls
-        
-    return s_hat
 
 ##### Bitstream Packing #####
 
@@ -604,3 +542,65 @@ def plot_transform_metrics(all_results):
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
+
+def analyze_dictionary_coherence(D):
+    """
+    Calculates the coherence mu(D) and the upper bound for sparsity K.
+    Assumes columns of D are already normalized to unit length.
+    """
+    # 1. Compute the Gram matrix G = D.T @ D
+    # G_ij contains the inner product of column i and column j
+    gram = np.dot(D.T, D)
+    
+    # 2. We only care about off-diagonal elements (i != j)
+    # Set the diagonal to zero so they aren't picked by the max()
+    np.fill_diagonal(gram, 0)
+    
+    # 3. Coherence is the maximum absolute value of off-diagonal entries
+    mu = np.max(np.abs(gram))
+    
+    # 4. Calculate the upper bound for K: 0.5 * (1 + 1/mu)
+    # Note: If mu is 0 (orthogonal matrix), K bound is technically infinite
+    if mu > 0:
+        k_bound = 0.5 * (1 + (1 / mu))
+    else:
+        k_bound = np.inf
+        
+    return mu, k_bound
+
+
+##### N-Way Array Operations #####
+
+def mode_n_product(X, U, n):
+    """
+    Mode-n tensor-matrix multiplication.
+
+    X : ndarray, shape (I1, ..., In, ..., IN)
+    U : ndarray, shape (J, In)
+    n : int (mode, 0-based)
+
+    Returns:
+        Y : ndarray, shape (I1, ..., J, ..., IN)
+    """
+    # tensordot contracts axis n of X with axis 1 of U
+    Y = np.tensordot(X, U, axes=([n], [1]))
+
+    # Move the new axis (last) back to position n
+    return np.moveaxis(Y, -1, n)
+
+
+##### Progress Bar #####
+def scaled_callback(base_callback, start, end):
+    def wrapper(progress):
+        base_callback(start + progress * (end - start))
+    return wrapper
+
+
+
+
+
+
+
+
+
+

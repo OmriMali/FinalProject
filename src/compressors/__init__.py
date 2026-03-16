@@ -1,7 +1,9 @@
 from src.compressors.base import BaseCompressor
 from src import util
-from src.recovery_algorithms import gomp
+from src.recovery_algorithms import kronecker_omp
 import numpy as np
+from scipy.sparse.linalg import LinearOperator
+import spgl1
 
 
 class HCS1D(BaseCompressor):
@@ -14,7 +16,7 @@ class HCS1D(BaseCompressor):
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
     @property
-    def name(self): return "1-dim HCS"
+    def name(self): return "hcs1d"
 
     @property
     def compressor_id(self): return 21

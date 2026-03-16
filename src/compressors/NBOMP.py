@@ -1,5 +1,5 @@
 import numpy as np
-from .base import BaseCompressor
+from src.compressors.base import BaseCompressor
 from src import util
 from scipy.fftpack import dct, idct
 

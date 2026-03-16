@@ -1,4 +1,4 @@
-from .base import BaseCompressor
+from src.compressors.base import BaseCompressor
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
@@ -6,7 +6,7 @@ from bitarray.util import int2ba, ba2int
 class CCSDS123(BaseCompressor):
 
     @property
-    def name(self): return "ccsds123"
+    def name(self): return "CCSDS-123"
 
     @property
     def compressor_id(self): return 11

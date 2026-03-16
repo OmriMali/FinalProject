@@ -1,4 +1,4 @@
-from .base import BaseCompressor
+from src.compressors.base import BaseCompressor
 from src import util
 import numpy as np
 

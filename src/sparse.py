@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import src.util as util
-import src.visuals as visuals
+from src import util, visuals
 import os
 import csv
 from datetime import datetime

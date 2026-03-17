@@ -1,13 +1,12 @@
 from src.compressors.base import BaseCompressor
-from src import util, transforms, measurement_matrices
-from src.recovery_algorithms import kronecker_omp
+from src import util, transforms, measurement_matrices, recovery_algorithms
 import numpy as np
 
 
 class HCS3D(BaseCompressor):
 
     @property
-    def name(self): return "3-dim HCS"
+    def name(self): return "HCS 3D"
 
     @property
     def compressor_id(self): return 22
@@ -91,16 +90,17 @@ class HCS3D(BaseCompressor):
 
         # 2. Setup recovery
         seeds = metadata["seeds"]
-        Phis = []
-        Psis = []
+        Psis_norm = []
         Ds = []
         for i in range(len(shape)):
-            Phis.append(measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
-            Psis.append(transforms.get_transform(self.Psi_names[i], shape[i]))
-            D = Phis[i] @ Psis[i]
-            # column normalization
-            D /= np.linalg.norm(D, axis=0, keepdims=True)
-            Ds.append(D)
+            Phi = measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i])
+            Psi = transforms.get_transform(self.Psi_names[i], shape[i])
+            
+            D_raw = Phi @ Psi
+            col_norms = np.linalg.norm(D_raw, axis=0, keepdims=True)
+            col_norms[col_norms == 0] = 1.0
+            Ds.append(D_raw / col_norms)
+            Psis_norm.append(Psi /col_norms)
 
         if self.progress_callback:
             self.progress_callback(0.1)
@@ -110,17 +110,12 @@ class HCS3D(BaseCompressor):
         if self.progress_callback:
             omp_callback = util.scaled_callback(self.progress_callback, 0.1, 0.95)
        
-        Is, a = kronecker_omp(Ds, Y, self.K, progress_callback=omp_callback)
+        X = recovery_algorithms.n_bomp(Ds, Y, self.K, progress_callback=omp_callback)
 
         # 4. Recover the hsi
-        X = np.zeros(shape)
-        for j in range(len(a)):
-            coord = tuple(Is[n][j] for n in range(len(Is)))
-            X[coord] = a[j]
-        
         Z = X
-        for n in range(len(Psis)):
-            Z = util.mode_n_product(Z, Psis[n], n)
+        for n in range(len(Psis_norm)):
+            Z = util.mode_n_product(Z, Psis_norm[n], n)
         
         hsi_rec = util.denormalize_zero_mean(Z, hsi_min, hsi_max)
         

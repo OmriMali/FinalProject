@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+from src import transforms
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 from abc import ABC, abstractmethod
@@ -568,6 +569,47 @@ def analyze_dictionary_coherence(D):
         
     return mu, k_bound
 
+def generate_synthetic_hsi(shape, K_sparse, transform_name="DCT"):
+    """
+    Generates a 3D HSI signal that is K-sparse in a transform domain.
+    
+    Parameters:
+    -----------
+    shape : tuple
+        The dimensions of the HSI (e.g., (32, 32, 10))
+    K_sparse : int
+        The number of non-zero coefficients in the core tensor.
+    transform_name : str
+        The transform name (e.g., "DCT")
+
+    Returns:
+    --------
+    Y : ndarray
+        The synthetic signal in spatial/spectral domain.
+    X_gt : ndarray
+        The ground truth sparse core tensor.
+    """
+    # 1. Generate the dictionaries (Inverse DCT matrices act as atoms)
+    # If Y is sparse in DCT, it is a linear combination of IDCT atoms.
+    Ds = [transforms.get_inverse_transform(transform_name, n) for n in shape]
+    
+    # 2. Create the sparse core tensor X_gt
+    X_gt = np.zeros(shape)
+    total_elements = np.prod(shape)
+    
+    # Randomly pick K unique locations
+    indices = np.random.choice(total_elements, K_sparse, replace=False)
+    
+    # Assign random coefficients (e.g., standard normal)
+    X_gt.flat[indices] = np.random.normal(size=K_sparse)
+    
+    # 3. Synthesize the signal: Y = X_gt x1 D1 x2 D2 x3 D3
+    Y = X_gt.copy()
+    for n in range(len(shape)):
+        Y = mode_n_product(Y, Ds[n], n)
+        
+    return Y, X_gt
+
 
 ##### N-Way Array Operations #####
 
@@ -588,8 +630,87 @@ def mode_n_product(X, U, n):
     # Move the new axis (last) back to position n
     return np.moveaxis(Y, -1, n)
 
+def mode_n_unfold(X, n):
+    """
+    Unfolds a tensor X into a matrix along mode n.
+    
+    X : ndarray, shape (I1, ..., In, ..., IN)
+    n : int (0-based)
+    
+    Returns:
+    X_n : ndarray, shape (In, -1)
+    """
+    return np.moveaxis(X, n, 0).reshape(X.shape[n], -1)
+
+def mode_n_fold(X_n, n, original_shape):
+    """
+    Folds a mode-n matricized tensor back into its original shape.
+    
+    X_n : ndarray, the unfolded matrix
+    n : int (0-based)
+    original_shape : tuple, the shape of the tensor before unfolding
+    
+    Returns:
+    X : ndarray, shape original_shape
+    """
+    reduced_shape = list(original_shape)
+    mode_dim = reduced_shape.pop(n)
+    intermediate_shape = [mode_dim] + reduced_shape
+    X_inter = X_n.reshape(intermediate_shape)
+    return np.moveaxis(X_inter, 0, n)
+
+def generate_block_sparse_signal(D, S, N):
+    """
+    Generates a block-sparse signal Y based on the Tucker model.
+    
+    Parameters
+    ----------
+    D : ndarray
+        The dictionary.
+    S : int
+        The number of active atoms in each dimension (sparsity per mode).
+        The total number of non-zero coefficients will be S^N.
+    N : int
+        Number of dimensions.
+        
+    Returns
+    -------
+    Y : ndarray
+        The synthesized signal of shape.
+    X_gt : ndarray
+        The ground truth sparse core tensor of shape.
+    """
+    M = D.shape[1]
+    out_shape = []
+    for n in range(N):
+        out_shape.append(M)
+    
+    # 1. Randomly select S unique indices for each dimension
+    active_indices = []
+    for n in range(N):
+        if S > M:
+            raise ValueError(f"Sparsity S={S} cannot be greater than dictionary size M={M}")
+        idx = np.sort(np.random.choice(M, S, replace=False))
+        active_indices.append(idx)
+        
+    # 2. Create the core tensor
+    X_gt = np.zeros(out_shape)
+    
+    # 3. Fill the S^N block with random coefficients (e.g., Gaussian)
+    # np.ix_ creates a meshgrid of indices to address the specific block
+    grid = np.ix_(*active_indices)
+    X_gt[grid] = np.random.randn(*([S] * N))
+    
+    # 4. Synthesize the signal Y = X x1 D1 x2 D2 ... xN DN
+    Y = X_gt.copy()
+    for n in range(N):
+        Y = mode_n_product(Y, D, n)
+        
+    return Y, X_gt
+
 
 ##### Progress Bar #####
+
 def scaled_callback(base_callback, start, end):
     def wrapper(progress):
         base_callback(start + progress * (end - start))

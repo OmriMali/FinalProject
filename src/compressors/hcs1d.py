@@ -14,7 +14,7 @@ class HCS1D(BaseCompressor):
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
     @property
-    def name(self): return "1-dim HCS"
+    def name(self): return "HCS 1D"
 
     @property
     def compressor_id(self): return 21

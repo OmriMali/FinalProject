@@ -27,6 +27,6 @@ MEASUREMENT_MATRICES = {
 def get_measurement_matrix(name, m, n, seed=None):
     try:
         rng = np.random.default_rng(seed)
-        return MEASUREMENT_MATRICES[name](m, n)
+        return MEASUREMENT_MATRICES[name](m, n, rng)
     except KeyError:
         raise ValueError(f"Unknown transform: {name}")

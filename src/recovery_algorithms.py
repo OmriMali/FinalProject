@@ -1,7 +1,6 @@
 import numpy as np
 from src import util
 
-
 def gomp(y, operator, K, N, eps=1e-6):
     """
     Generalized Orthogonal Matching Pursuit (gOMP) implementation.
@@ -87,10 +86,8 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None):
 
     Returns
     -------
-    Is : list of lists
-        Selected indices per mode. Is[n][k] is the index chosen from D_n at iteration k.
-    a : ndarray
-        Coefficient vector corresponding to selected atoms.
+    X : ndarray
+        Sparse N-way array.
     """
 
     # Step 1: Initialization
@@ -171,5 +168,119 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None):
         if progress_callback and (k % 5 == 0 or k == K):
             progress_callback(k / K)
 
-    return Is, a
+    # Step 8: Compute X
+    full_shape = [D.shape[1] for D in Ds]
+    X = np.zeros(full_shape)
+    for j in range(len(a)):
+        coord = tuple(Is[n][j] for n in range(len(Is)))
+        X[coord] = a[j]
+
+    return X
         
+def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None):
+    """
+    N-BOMP algorithm for sparse approximation of an N-dimensional tensor.
+
+    Parameters
+    ----------
+    Ds : list of ndarray
+        List of N dictionaries. Each D_n has shape (I_n, M_n), where I_n matches
+        the size of Y along mode n.
+    Y : ndarray
+        Input tensor of shape (I_1, I_2, ..., I_N).
+    K : int
+        Maximum number of atoms (sparsity level).
+    tol : float, optional
+        Stopping threshold based on Frobenius norm of the residual.
+    progress_callback : float, optional
+        Updates an external progress bar.
+
+    Returns
+    -------
+    X : ndarray
+        Sparse N-way array.
+    """
+    def _get_curr_k(Is):
+        k = 1
+        for I in Is:
+            k *= len(I)
+        return k
+
+    # Step 1: Initialization
+    shape = Y.shape
+    N = len(shape)
+    if len(Ds) != N:
+        raise ValueError("Amount of dictionaries does not match the signal dimension")
+
+    Is = []
+    for n in range(N):
+        Is.append([])  
+    
+    R = Y.copy()
+    A = None
+    # Step 2: Loop
+    k = 1
+    while _get_curr_k(Is) < K and np.linalg.norm(R) > tol:
+
+        # Step 3: Find atom indices with max correlation
+        corr = R.copy()
+        for n, D in enumerate(Ds):
+            corr = util.mode_n_product(corr, D.T, n)
+        indices = np.unravel_index(np.argmax(np.abs(corr)), corr.shape)
+        
+        # Step 4: Update indices lists and B matrices
+        Bs = []
+        for n in range(N):
+            if indices[n] not in Is[n]:
+                Is[n].append(indices[n])
+            B = Ds[n][:, Is[n]]
+            Bs.append(B)
+        
+        # Step 5: Compute coefficient vector
+        Z_prev = Y.copy()
+        for n in range(N):
+            B = Bs[n]
+            G = B.T @ B
+
+            Z_prev = util.mode_n_product(Z_prev, B.T, n)
+            Z_prev_n = util.mode_n_unfold(Z_prev, n)
+            
+            L = np.linalg.cholesky(G + 1e-10*np.eye(G.shape[0]))
+            Y_tmp = np.linalg.solve(L, Z_prev_n)
+            Z_n = np.linalg.solve(L.T, Y_tmp)
+            
+            new_shape = list(Z_prev.shape)
+            new_shape[n] = B.shape[1]
+            Z_prev = util.mode_n_fold(Z_n, n, new_shape)
+
+        A = Z_prev
+
+        # Step 6: Update residual
+        Y_hat = A
+        for n in range(N):
+            Y_hat = util.mode_n_product(Y_hat, Bs[n], n)
+        
+        R = Y - Y_hat
+
+        # Step 7: Advance k
+        k += 1
+        if progress_callback:
+            progress_callback(_get_curr_k(Is) / K)
+
+    # Step 8: Compute X
+    full_shape = [D.shape[1] for D in Ds]
+    X = np.zeros(full_shape)
+    grids = np.ix_(*Is)
+    X[grids] = A
+    if progress_callback:
+        progress_callback(1.0)
+    
+    return X
+
+
+
+
+
+
+
+

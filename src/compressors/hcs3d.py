@@ -36,6 +36,7 @@ class HCS3D(BaseCompressor):
         Phis = []
         for i in range(len(shape)):
             Phis.append(measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
+
         if self.progress_callback:
             self.progress_callback(0.4)
 
@@ -44,7 +45,7 @@ class HCS3D(BaseCompressor):
         for i in range(len(shape)):
             Y = util.mode_n_product(Y, Phis[i], i)
         if self.progress_callback:
-            self.progress_callback(0.8)
+            self.progress_callback(0.6)
 
         # 4. Quantization & Bit Packing
         max_int = (1 << bit_depth) - 1
@@ -94,13 +95,14 @@ class HCS3D(BaseCompressor):
         Ds = []
         for i in range(len(shape)):
             Phi = measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i])
-            Psi = transforms.get_transform(self.Psi_names[i], shape[i])
-            
-            D_raw = Phi @ Psi
-            col_norms = np.linalg.norm(D_raw, axis=0, keepdims=True)
+            Psi = transforms.get_inverse_transform(self.Psi_names[i], shape[i])
+            D = Phi @ Psi
+
+            col_norms = np.linalg.norm(D, axis=0)
             col_norms[col_norms == 0] = 1.0
-            Ds.append(D_raw / col_norms)
-            Psis_norm.append(Psi /col_norms)
+            S_inv = np.diag(1.0 / col_norms)
+            Ds.append(D @ S_inv)
+            Psis_norm.append(Psi @ S_inv)
 
         if self.progress_callback:
             self.progress_callback(0.1)
@@ -110,7 +112,7 @@ class HCS3D(BaseCompressor):
         if self.progress_callback:
             omp_callback = util.scaled_callback(self.progress_callback, 0.1, 0.95)
        
-        X = recovery_algorithms.n_bomp(Ds, Y, self.K, progress_callback=omp_callback)
+        X = recovery_algorithms.n_bomp(Ds, Y, self.K, tol=0.01 ,progress_callback=omp_callback)
 
         # 4. Recover the hsi
         Z = X

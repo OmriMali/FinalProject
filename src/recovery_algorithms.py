@@ -1,6 +1,72 @@
 import numpy as np
 from src import util
 
+
+def omp(D, y, K, tol=1e-6, progress_callback=None):
+    """
+    OMP algorithm for sparse approximation of a vector.
+
+    Parameters
+    ----------
+    D : ndarray
+        A dictionary of shape (I, M). Columns must be normalized.
+    y : ndarray
+        Input vector of length I.
+    K : int
+        Sparsity level.
+    tol : float, optional
+        Stopping threshold based on norm of the residual.
+    progress_callback : float, optional
+        Updates an external progress bar.
+
+    Returns
+    -------
+    x : ndarray
+        Sparse vector such that y ~= Dx.
+    """
+    # Step 1: Initialization
+    I, M = D.shape
+    idx_list = []
+    r = y.copy()
+    x = np.zeros(M)
+    a = np.array([])
+
+    # Step 2: Loop
+    k = 1
+    r_norm = np.linalg.norm(r)
+    while k <= K and r_norm > tol:
+
+        # Step 3: Find maximum correlated atom
+        corr = D.T @ r
+        idx = np.argmax(np.abs(corr))
+
+        # Step 4: Update index list
+        if idx in idx_list:
+            break
+
+        idx_list.append(idx)
+
+        # Step 5: Compute coefficients (least squares)
+        D_sub = D[:, idx_list]
+        a, _, _, _ = np.linalg.lstsq(D_sub, y, rcond=None)
+
+        # Step 6: Update residual
+        r = y - D_sub @ a
+        r_norm = np.linalg.norm(r)
+
+        # Optional progress callback
+        if progress_callback:
+            progress_callback(k / K)
+        
+        # Step 7: Increment k
+        k += 1
+
+    # Step 8: Compute x
+    if len(idx_list) > 0:
+        x[idx_list] = a
+
+    return x
+
 def gomp(y, operator, K, N, eps=1e-6):
     """
     Generalized Orthogonal Matching Pursuit (gOMP) implementation.
@@ -74,7 +140,7 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None):
     ----------
     Ds : list of ndarray
         List of N dictionaries. Each D_n has shape (I_n, M_n), where I_n matches
-        the size of Y along mode n.
+        the size of Y along mode n. Columns must be normalized.
     Y : ndarray
         Input tensor of shape (I_1, I_2, ..., I_N).
     K : int
@@ -185,7 +251,7 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None):
     ----------
     Ds : list of ndarray
         List of N dictionaries. Each D_n has shape (I_n, M_n), where I_n matches
-        the size of Y along mode n.
+        the size of Y along mode n. Columns must be normalized.
     Y : ndarray
         Input tensor of shape (I_1, I_2, ..., I_N).
     K : int

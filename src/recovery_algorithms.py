@@ -343,10 +343,3 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None):
     
     return X
 
-
-
-
-
-
-
-

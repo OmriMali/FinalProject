@@ -30,8 +30,22 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
     """
     # Step 1: Initialize
     M, N = Y.shape
-    D = Y[:, :K].copy()
-    D /= np.linalg.norm(D, axis=0, keepdims=True)
+
+    # # Trivial Dictrionary Initialization
+    # D = Y[:, :K].copy()
+    # D /= np.linalg.norm(D, axis=0, keepdims=True)
+
+    # SVD Dictrionary Initialization
+    U, _, _ = np.linalg.svd(Y, full_matrices=False)
+    D = np.zeros((M, K))
+    D[:, :M] = U
+    if K > M:
+        idx = np.random.choice(Y.shape[1], K - M, replace=False)
+        D[:, M:] = Y[:, idx]
+    norms = np.linalg.norm(D, axis=0, keepdims=True)
+    norms[norms == 0] = 1
+    D /= norms
+    
     X = np.zeros((K, N))
     Y_norms = np.linalg.norm(Y)
 
@@ -87,9 +101,9 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
 
 def _synth_test_k_svd(M=20, K=10, N=200, T_0=3):
 
-    pbar = tqdm(total=1.0)
-    def progress_bar(progress):
-        pbar.n = progress
+    pbar = tqdm(total=100)
+    def progress_bar(fraction):
+        pbar.n = int(100 * fraction)
         pbar.refresh()
 
     # Dictionary Generation

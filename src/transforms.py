@@ -14,7 +14,7 @@ def dct_basis(n, inverse=False):
 
 TRANSFORMS = {
     "IDENTITIY": identity_basis,
-    "DCT": dct_basis 
+    "DCT": dct_basis
 }
 
 def get_transform(name, n):

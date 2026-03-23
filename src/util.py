@@ -372,7 +372,6 @@ class GaussianMeasurementMatrix(MeasurementMatrix):
         x_swapped = x_flat.reshape(n, *shape_orig[1:])
         return np.moveaxis(x_swapped, 0, ax)
 
-
 ##### Sensing Operators #####
 
 class SensingOperator:
@@ -707,7 +706,6 @@ def generate_block_sparse_signal(D, S, N):
         Y = mode_n_product(Y, D, n)
         
     return Y, X_gt
-
 
 ##### Progress Bar #####
 

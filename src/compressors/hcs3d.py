@@ -112,7 +112,7 @@ class HCS3D(BaseCompressor):
         if self.progress_callback:
             omp_callback = util.scaled_callback(self.progress_callback, 0.1, 0.95)
        
-        X = recovery_algorithms.n_bomp(Ds, Y, self.K, tol=0.01 ,progress_callback=omp_callback)
+        X = recovery_algorithms.n_bomp(Ds, Y, self.K, tol=1e-2 ,progress_callback=omp_callback)
 
         # 4. Recover the hsi
         Z = X

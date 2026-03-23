@@ -1,15 +1,10 @@
 from src.compressors.base import BaseCompressor
-from src import util
-from src.recovery_algorithms import gomp
+from src import util, measurement_matrices, transforms, recovery_algorithms
 import numpy as np
 
 
 class HCS1D(BaseCompressor):
     
-    # Map strings to classes
-    BASIS_MAP = {"DFT": util.DFTBasis, "DCT": util.DCTBasis}
-    MEASUREMENT_MAP = {"Subsampling": util.SubsamplingMatrix}
-
     # Map axis to spatial\spectral
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
@@ -19,43 +14,14 @@ class HCS1D(BaseCompressor):
     @property
     def compressor_id(self): return 21
 
-    def __init__(self, targetCR=2, axis=-1, measurement_matrix="Subsampling",
-                 trasnform_basis="DFT", seed=42, progress_callback=None):
+    def __init__(self, K, sr=2, axis=-1, Phi_name="SUBSAMPLING",
+                 Psi_name="IDCT", progress_callback=None):
         super().__init__(progress_callback)
-        self.targetCR = targetCR
+        self.sr = sr
+        self.K = K
         self.axis = axis
-        self.Phi_name = measurement_matrix
-        self.Psi_name = trasnform_basis
-        self.seed = seed
-        self.K = 30
-        self.N = 5
-        
-    @classmethod
-    def print_available_components(cls):
-        """Prints a summary of all registered bases and measurement matrices."""
-        print("\n" + "="*30)
-        print(f"HCS1D AVAILABLE COMPONENTS")
-        print("="*30)
-        
-        print("\n[Transform Bases]")
-        for name, class_ref in cls.BASIS_MAP.items():
-            # We instantiate briefly to check the dtype for information
-            temp_obj = class_ref()
-            dtype_str = "Complex" if np.iscomplexobj(np.array([], dtype=temp_obj.transform_dtype)) else "Real"
-            print(f" - {name:<12} (Type: {dtype_str})")
-
-        print("\n[Measurement Matrices]")
-        for name in cls.MEASUREMENT_MAP.keys():
-            print(f" - {name}")
-        print("="*30 + "\n")
-
-    def _setup_operators(self, n):
-        """Instantiates the specific Phi and Psi objects."""
-        m = int(n / self.targetCR)
-        
-        Phi = self.MEASUREMENT_MAP[self.Phi_name](n, m, seed=self.seed)
-        Psi = self.BASIS_MAP[self.Psi_name]()
-        return Phi, Psi
+        self.Phi_name = Phi_name
+        self.Psi_name = Psi_name
 
     def compress(self, hsi):
         if self.progress_callback:
@@ -64,77 +30,108 @@ class HCS1D(BaseCompressor):
         # 1. Statistics and Normalization to [-1, 1]
         min_val, max_val, bit_depth = util.get_hsi_statistics(hsi)
         hsi_norm = util.normalize_zero_mean(hsi, min_val, max_val)
+        n = hsi.shape[self.axis]
         if self.progress_callback:
             self.progress_callback(0.2)
 
-        # 2. Get Measurements
-        n = hsi.shape[self.axis]
-        Phi, _ = self._setup_operators(n)
-        y = Phi.forward(hsi_norm, axis=self.axis)
+        # 2. Generate Phi
+        seed = np.random.randint(0, 1_000_000)
+        p = int(self.sr * n)
+        Phi = measurement_matrices.get_measurement_matrix(
+             self.Phi_name, p, n, seed)
+        if self.progress_callback:
+            self.progress_callback(0.4)
+
+        # 3. Get Measurements
+        Y = hsi_norm.copy()
+        Y = util.mode_n_product(Y, Phi, self.axis)
         if self.progress_callback:
             self.progress_callback(0.8)
 
-        # 3. Quantization & Bit Packing
+        # 4. Quantization & Bit Packing
         max_int = (1 << bit_depth) - 1
-        y_quantized = np.clip(np.round((y + 1) / 2 * max_int).astype(np.uint64), 0, max_int)
-        bitstream = util.pack_to_bit_depth(y_quantized, bit_depth)
+        Y_max = np.max(np.abs(Y))
+        Y_quantized = np.clip(np.round((Y + Y_max) / 2 * max_int).astype(np.uint64), 0, max_int)
+        bitstream = util.pack_to_bit_depth(Y_quantized, bit_depth)
+        if self.progress_callback:
+            self.progress_callback(1.0)
 
         metadata = {
-            "y_shape": y.shape,
+            "Y_shape": Y.shape,
+            "Y_max": Y_max,
             "hsi_shape": hsi.shape,
-            "min_val": min_val,
-            "max_val": max_val,
+            "hsi_min": min_val,
+            "hsi_max": max_val,
             "bit_depth": bit_depth,
+            "seed": seed,
             "params": {
-                "transform basis": self.Psi_name,
+                "sparsity": self.K,
+                "sampling rate": self.sr,
+                "transform": self.Psi_name,
                 "measurement matrix": self.Phi_name,
-                "seed": self.seed,
-                "target CR": self.targetCR,
                 "compression axis": self.AXIS_MAP[self.axis]
             }
         }
         return bitstream, metadata
     
     def decompress(self, bitstream, metadata):
-        
+        if self.progress_callback:
+            self.progress_callback(0.0)
+
         # 1. Unpack & Dequantize
-        y_quantized = util.unpack_from_bit_depth(bitstream, 
-                                                 metadata["bit_depth"], 
-                                                 metadata["y_shape"])
-        max_int = (1 << metadata["bit_depth"]) - 1
-        y = (y_quantized.astype(np.float64) / max_int) * 2 - 1
+        Y_shape = metadata["Y_shape"]
+        Y_max = metadata["Y_max"]
 
-        # 2. Setup Operators
-        n = metadata["hsi_shape"][self.axis]
-        m = metadata["y_shape"][self.axis]
-        Phi, Psi = self._setup_operators(n)
-        A = util.SensingOperator(Phi, Psi, n)
+        shape = metadata["hsi_shape"]
+        hsi_min = metadata["hsi_min"]
+        hsi_max = metadata["hsi_max"]
+        bit_depth = metadata["bit_depth"]
 
-        # 3. Reconstruction Setup
-        y_flat = y.reshape(-1, m)
-        num_pixels = y_flat.shape[0]
-        s_hat_flat = np.zeros((num_pixels, n), dtype=Psi.transform_dtype)
+        Y_quantized = util.unpack_from_bit_depth(bitstream, bit_depth, Y_shape)
+        max_int = (1 << bit_depth) - 1
+        Y = (Y_quantized.astype(np.float64) / max_int) * 2 - Y_max
+        if self.progress_callback:
+            self.progress_callback(0.05)
 
-        # 4. Reconstruction Loop
+        # 2. Setup recovery
+        seed = metadata["seed"]
+        n = shape[self.axis]
+        p = Y_shape[self.axis]
+        Phi = measurement_matrices.get_measurement_matrix(self.Phi_name, p, n, seed)
+        Psi = transforms.get_transform(self.Psi_name, n)
+        D = Phi @ Psi
+        col_norms = np.linalg.norm(D, axis=0)
+        col_norms[col_norms == 0] = 1.0
+        S_inv = np.diag(1.0 / col_norms)
+        D = D @ S_inv
+        Psi_norm = Psi @ S_inv
+        if self.progress_callback:
+            self.progress_callback(0.1)
+
+         # 3. Run recovery algorithm
+        Y_unfolded = util.mode_n_unfold(Y, self.axis)
+        num_pixels = Y_unfolded.shape[1]
+        X_unfolded = np.zeros((D.shape[1], num_pixels))
+
         for i in range(num_pixels):
-            # s_recon, resid, grad, info = spgl1.spg_bpdn(A, y_flat[i], sigma=0.01, iter_lim=100, verbosity=0)
-            s_recon = gomp(y_flat[i], A, K=self.K, N=self.N)
-            s_hat_flat[i] = s_recon
-            self.progress_callback(i / num_pixels)
+            x_rec = recovery_algorithms.omp(D, Y_unfolded[:, i], self.K, tol=1e-2)
+            X_unfolded[:, i] = x_rec
+            if self.progress_callback and i % 100 == 0:
+                self.progress_callback(i / num_pixels)
         
-        # 5. Inverse Transform to Signal Domain
-        s_hat = s_hat_flat.reshape(metadata["hsi_shape"])
-        hsi_recon_norm = Psi.inverse(s_hat, axis=self.axis).real.astype(np.float64)
+        # 4. Recover the hsi
+        pixel_shape = list(shape)
+        pixel_shape[self.axis] = D.shape[1]
+        X = util.mode_n_fold(X_unfolded, self.axis, pixel_shape)
+        Z = util.mode_n_product(X, Psi_norm, self.axis)
+        hsi_rec = util.denormalize_zero_mean(Z, hsi_min, hsi_max)
+        if self.progress_callback:
+            self.progress_callback(1.0)
 
-        return util.denormalize_zero_mean(hsi_recon_norm,
-                                          metadata["min_val"],
-                                          metadata["max_val"])
+        return hsi_rec
     
 
         
-
-
-
 
 
         

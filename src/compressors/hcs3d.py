@@ -35,8 +35,8 @@ class HCS3D(BaseCompressor):
         seeds = [np.random.randint(0, 1_000_000) for _ in range(len(shape))]
         Phis = []
         for i in range(len(shape)):
-            Phis.append(measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
-
+            Phis.append(measurement_matrices.get_measurement_matrix(
+                    self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
         if self.progress_callback:
             self.progress_callback(0.4)
 
@@ -73,7 +73,9 @@ class HCS3D(BaseCompressor):
         return bitstream, metadata
     
     def decompress(self, bitstream, metadata):
-        
+        if self.progress_callback:
+            self.progress_callback(0.0)
+            
         # 1. Unpack & Dequantize
         Y_shape = metadata["Y_shape"]
         Y_max = metadata["Y_max"]
@@ -84,7 +86,7 @@ class HCS3D(BaseCompressor):
         bit_depth = metadata["bit_depth"]
 
         Y_quantized = util.unpack_from_bit_depth(bitstream, bit_depth, Y_shape)
-        max_int = (1 << metadata["bit_depth"]) - 1
+        max_int = (1 << bit_depth) - 1
         Y = (Y_quantized.astype(np.float64) / max_int) * 2 - Y_max
         if self.progress_callback:
             self.progress_callback(0.05)

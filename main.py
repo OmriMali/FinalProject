@@ -18,11 +18,12 @@ hsi_data = util.load_hsi("raw\\Indian_pines_corrected.mat")
 # hsi_data = hsi_data[:128, :128, :32]
 
 # 2. Setup components
-compressor = HCS3D(40000,
-                    sr=[0.57, 0.57, 0.57],
-                    Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"],
-                    Psi_names=["IDCT", "IDCT", "LEARNED:results\\learned_dicts\\D_ksvd.npz"]
-                    )
+# compressor = HCS3D(40000,
+#                     sr=[0.57, 0.57, 0.57],
+#                     Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"],
+#                     Psi_names=["IDCT", "IDCT", "LEARNED:results\\learned_dicts\\D_ksvd.npz"])
+compressor = HCS1D(3, sr=0.25, axis=2, Phi_name="SUBSAMPLING", 
+                   Psi_name="LEARNED:results\\learned_dicts\\D_ksvd.npz")
 logger = DataLogger(compressor_name=compressor.name, compressor_id=compressor.compressor_id, base_dir="results")
 handler = RunHandler(compressor, logger)
 
@@ -32,7 +33,7 @@ handler.run_experiment(hsi_data, dataset_name="IndianPines", save_reconstruction
 
 # visuals
 orig = visuals.to_false_color(hsi_data)
-rec = visuals.to_false_color(visuals.load_reconstruction("results\\hcs3d\\reconstructions\\220004_IndianPines_recon.npz"))
+rec = visuals.to_false_color(visuals.load_reconstruction("results\\hcs1d\\reconstructions\\210009_IndianPines_recon.npz"))
 plt.figure()
 plt.subplot(1, 2, 1)
 plt.imshow(orig)

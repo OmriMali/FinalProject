@@ -1,4 +1,5 @@
 import numpy as np
+from src import util
 from tqdm import tqdm
 from src import recovery_algorithms
 
@@ -137,3 +138,4 @@ def _synth_test_k_svd(M=20, K=10, N=200, T_0=3):
     # Sparsity Check
     avg_sparsity = np.mean(np.count_nonzero(X_learned, axis=0))
     print("Average sparsity:", avg_sparsity)
+

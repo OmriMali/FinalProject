@@ -6,7 +6,7 @@ from scipy.fftpack import dct, idct
 class NBOMP(BaseCompressor):
     @property
     def name(self): 
-        return "Block-KCS-OMP"
+        return "nbomp"
 
     @property
     def compressor_id(self): 

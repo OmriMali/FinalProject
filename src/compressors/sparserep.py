@@ -16,7 +16,7 @@ class SparseRep(BaseCompressor):
              self.transforms.append(self.BASIS_MAP[t]())
 
     @property
-    def name(self): return "spraseRep"
+    def name(self): return "spraserep"
     
     @property
     def compressor_id(self): return 13

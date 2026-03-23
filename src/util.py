@@ -1,5 +1,6 @@
 import numpy as np
 import scipy as sp
+import os
 import matplotlib.pyplot as plt
 from src import transforms
 from bitarray import bitarray
@@ -117,6 +118,61 @@ def denormalize_zero_mean(hsi_norm, min_val, max_val):
     half_range = (max_val - min_val) / 2.0
     
     return (hsi_norm * half_range) + midpoint
+
+##### Data Logging #####
+
+def save_array_to_path(arr, path, metadata=None):
+    """
+    Save a NumPy array to a file, optionally with metadata.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Array to save.
+    path : str
+        File path to save the array to.
+    metadata : dict, optional
+        Dictionary of metadata to save alongside the array.
+    """
+    # Prepare save dictionary
+    save_dict = {"array": arr}
+    if metadata is not None:
+        for key, value in metadata.items():
+            save_dict[f"meta_{key}"] = value
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+    # Save as npz
+    np.savez_compressed(path, **save_dict)
+
+def load_array_from_path(path):
+    """
+    Load a NumPy array and optional metadata saved with `save_array_to_path`.
+
+    Parameters
+    ----------
+    path : str
+        Path to load.
+
+    Returns
+    -------
+    arr : ndarray
+        The main array.
+    metadata : dict
+        Metadata dictionary (empty if none saved).
+    """
+    with np.load(path, allow_pickle=True) as data:
+        # Main array
+        arr = data["array"]
+        
+        # Extract metadata
+        metadata = {}
+        for key in data.files:
+            if key.startswith("meta_"):
+                metadata[key[5:]] = data[key].item() if data[key].shape == () else data[key]
+    
+    return arr, metadata
 
 ##### Metric Calculations #####
 

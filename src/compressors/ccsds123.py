@@ -6,7 +6,7 @@ from bitarray.util import int2ba, ba2int
 class CCSDS123(BaseCompressor):
 
     @property
-    def name(self): return "CCSDS-123"
+    def name(self): return "ccsds123"
 
     @property
     def compressor_id(self): return 11

@@ -6,14 +6,14 @@ import numpy as np
 class HCS3D(BaseCompressor):
 
     @property
-    def name(self): return "HCS 3D"
+    def name(self): return "hcs3d"
 
     @property
     def compressor_id(self): return 22
 
     def __init__(self, K, sr=[0.5, 0.5, 1],
                  Phi_names=["SUBSAMPLING", "SUBSAMPLING", "IDENTITY"],
-                 Psi_names=["DCT", "DCT", "DCT"], progress_callback=None):
+                 Psi_names=["IDCT", "IDCT", "IDCT"], progress_callback=None):
         super().__init__(progress_callback)
         self.K = K
         self.sr = sr
@@ -95,7 +95,7 @@ class HCS3D(BaseCompressor):
         Ds = []
         for i in range(len(shape)):
             Phi = measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i])
-            Psi = transforms.get_inverse_transform(self.Psi_names[i], shape[i])
+            Psi = transforms.get_transform(self.Psi_names[i], shape[i])
             D = Phi @ Psi
 
             col_norms = np.linalg.norm(D, axis=0)

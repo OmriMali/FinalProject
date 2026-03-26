@@ -6,9 +6,80 @@ import time
 from datetime import datetime
 from tqdm import tqdm
 
-from src import util
+from src import util, dictionary_learning
 from src.hsi import HSI
 from src.compressors.base import BaseCompressor
+
+
+# ===== Helpers ===== #
+
+def _sanitize(s: str) -> str:
+    """Remove spaces and unsafe characters."""
+    return str(s).replace(" ", "")
+
+def _get_base_filename(results: dict) -> str:
+    """Generate standardized filename."""
+    sensor = _sanitize(results["sensor"])
+    site = _sanitize(results["site"])
+    name = _sanitize(results["name"])
+    timestamp = results["timestamp"]
+
+    return f"{sensor}_{site}_{name}_{timestamp}"
+
+def _save_bitstream(bitstream, path: str):
+    """Save bitstream in appropriate format."""
+    if isinstance(bitstream, bytes):
+        with open(path + ".bin", "wb") as f:
+            f.write(bitstream)
+
+    elif isinstance(bitstream, np.ndarray):
+        np.save(path + ".npy", bitstream)
+
+    else:
+        # fallback
+        with open(path + ".pkl", "wb") as f:
+            pickle.dump(bitstream, f)
+
+def _append_to_csv(csv_path: str, row: dict):
+    """
+    Append a row to CSV, dynamically expanding columns if needed.
+    """
+    file_exists = os.path.exists(csv_path)
+
+    if file_exists:
+        # Read existing header
+        with open(csv_path, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            existing_fields = reader.fieldnames or []
+    else:
+        existing_fields = []
+
+    # Merge fields
+    new_fields = list(row.keys())
+    all_fields = list(dict.fromkeys(existing_fields + new_fields))
+
+    # If new fields appeared → rewrite file
+    if set(all_fields) != set(existing_fields):
+        rows = []
+
+        if file_exists:
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=all_fields)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow(r)
+            writer.writerow(row)
+    else:
+        # Simple append
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=all_fields)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
 
 # ===== Running Expirements ===== #
 
@@ -88,77 +159,99 @@ def run_compression(hsi: HSI, compressor: BaseCompressor):
 
     return results
 
+def learn_dictionary_ksvd(Y: np.ndarray, dict_name: str, K: int, T_0: int,
+    max_iter: int = 30, tol: float = 1e-6, save_dict: bool = True):
+    """
+    Learn a dictionary using K-SVD.
+    """
+    print(f"\n{'='*20} Learning Dictionary using K-SVD: {dict_name} {'='*20}")
 
+    # ===== K-SVD ===== #
+    with tqdm(total=100, desc="K-SVD", unit="%") as pbar:
+        def progress_cb(fraction):
+            pbar.n = int(fraction * 100)
+            pbar.refresh()
+
+        start = time.perf_counter()
+
+        D, X = dictionary_learning.k_svd(
+            Y,
+            K=K,
+            T_0=T_0,
+            tol=tol,
+            max_iter=max_iter,
+            progress_callback=progress_cb
+        )
+
+        train_time = time.perf_counter() - start
+        progress_cb(1.0)
+
+    # ===== Metrics ===== #
+    err = np.linalg.norm(Y - D @ X) / np.linalg.norm(Y)
+    mean_sparsity = np.mean(np.count_nonzero(X, axis=0))
+
+    print(f"Reconstruction Error: {err:.3e}")
+    print(f"Mean Sparsity: {mean_sparsity:.2f}")
+    print(f"Training Time: {train_time:.2f}s")
+    
+    # ===== Metadata ===== #
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    metadata = {
+        "name": dict_name,
+        "algorithm": "ksvd",
+        "timestamp": timestamp,
+        "params": {
+            "K": K,
+            "T_0": T_0,
+            "max_iter": max_iter,
+            "tol": tol,
+        },
+        "metrics": {
+            "reconstruction_error": err,
+            "mean_sparsity": mean_sparsity,
+            "train_time": train_time
+        }
+    }
+
+    # ===== Save ===== #
+    if save_dict:
+        base_name = f"{_sanitize(dict_name)}_ksvd_{timestamp}"
+
+        save_dir = os.path.join("results", "dictionaries")
+        
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, base_name + ".npz")
+
+        util.save_array_to_path(D, save_path, metadata=metadata)
+
+        # ===== Log CSV ===== #
+        csv_path = os.path.join(save_dir, "dict_log.csv")
+
+        row = {
+            "name": dict_name,
+            "algorithm": "ksvd",
+            "timestamp": timestamp,
+            "reconstruction_error": err,
+            "mean_sparsity": mean_sparsity,
+            "train_time": train_time,
+        }
+
+        for k, v in metadata["params"].items():
+            row[k] = v
+
+        _append_to_csv(csv_path, row)
+
+        print(f"[LOG] Dictionary saved to {save_path}")
+
+    # ===== Return ===== #
+    return {
+        "dictionary": D,
+        "coefficients": X,
+        "metadata": metadata
+    }
 
 # ===== Logging Results ===== #
-
-def _sanitize(s: str) -> str:
-    """Remove spaces and unsafe characters."""
-    return str(s).replace(" ", "")
-
-def _get_base_filename(results: dict) -> str:
-    """Generate standardized filename."""
-    sensor = _sanitize(results["sensor"])
-    site = _sanitize(results["site"])
-    name = _sanitize(results["name"])
-    timestamp = results["timestamp"]
-
-    return f"{sensor}_{site}_{name}_{timestamp}"
-
-def _save_bitstream(bitstream, path: str):
-    """Save bitstream in appropriate format."""
-    if isinstance(bitstream, bytes):
-        with open(path + ".bin", "wb") as f:
-            f.write(bitstream)
-
-    elif isinstance(bitstream, np.ndarray):
-        np.save(path + ".npy", bitstream)
-
-    else:
-        # fallback
-        with open(path + ".pkl", "wb") as f:
-            pickle.dump(bitstream, f)
-
-def _append_to_csv(csv_path: str, row: dict):
-    """
-    Append a row to CSV, dynamically expanding columns if needed.
-    """
-    file_exists = os.path.exists(csv_path)
-
-    if file_exists:
-        # Read existing header
-        with open(csv_path, "r", newline="") as f:
-            reader = csv.DictReader(f)
-            existing_fields = reader.fieldnames or []
-    else:
-        existing_fields = []
-
-    # Merge fields
-    new_fields = list(row.keys())
-    all_fields = list(dict.fromkeys(existing_fields + new_fields))
-
-    # If new fields appeared → rewrite file
-    if set(all_fields) != set(existing_fields):
-        rows = []
-
-        if file_exists:
-            with open(csv_path, "r", newline="") as f:
-                reader = csv.DictReader(f)
-                rows = list(reader)
-
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=all_fields)
-            writer.writeheader()
-            for r in rows:
-                writer.writerow(r)
-            writer.writerow(row)
-    else:
-        # Simple append
-        with open(csv_path, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=all_fields)
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(row)
 
 def log_compression_run(results: dict, save_bitstream=False, save_reconstruction=False):
     """

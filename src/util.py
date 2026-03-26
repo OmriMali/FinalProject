@@ -3,7 +3,6 @@ import scipy as sp
 import math
 import os
 import tarfile
-from spectral import open_image
 import matplotlib.pyplot as plt
 from src import transforms
 from src.hsi import HSI
@@ -13,21 +12,6 @@ from abc import ABC, abstractmethod
 
 
 ##### HSI Handling #####
-
-# def load_hsi(path):
-#     """
-#     Load an HSI as a numpy array, indexed as [y, x, z] <-> [vertical, horizontal, spectral]
-#     """
-#     mat = sp.io.loadmat(path)
-#     mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
-
-#     if len(mat_clean) == 1:
-#         data_array = next(iter(mat_clean.values()))
-#     else:
-#         data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
-
-#     return data_array
-
 
 def get_hsi_statistics(hsi, verbose=False):
     """
@@ -158,6 +142,58 @@ def load_hsi(path: str) -> HSI:
         dtype=obj["dtype"],
         metadata=obj["metadata"]
     )
+
+def load_hsi_from_mat(mat_path: str, name: str, site: str, sensor: str) -> HSI:
+
+    mat = sp.io.loadmat(mat_path)
+
+    # Find the actual data key
+    key = [k for k in mat.keys() if not k.startswith("__")][0]
+    cube = mat[key]
+
+    # ===== Wavelengths ===== #
+    bands = cube.shape[2]
+
+    # Option 1: simple approximation
+    wavelengths = np.linspace(400, 2500, bands)
+
+    # ===== Metadata ===== #
+    metadata = {
+        "name": name,
+        "site": site,
+        "sensor": sensor,
+    }
+
+    return HSI(
+        data=cube,
+        wavelengths=wavelengths,
+        dtype=cube.dtype,
+        metadata=metadata
+    )
+
+def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
+    """
+    Preprocess HSI to use as training data for dictionary. 
+    Preprocessing includes unfolding to 2D along mode and subsampling N_train columns.
+    
+    Parameters
+    ----------
+    hsi : HSI
+        HSI to use as training data.
+    N_train : int
+       Max number of fibers to train on.
+    mode : int
+        Axis on which to train.
+    
+    Returns
+    --------
+    Y : ndarray
+        A 2D array of shape (:, N_train).
+    """
+
+    Y = mode_n_unfold(hsi.get_norm_data(), n=2)
+    idx = np.random.choice(Y.shape[1], N_train, replace=False)
+    return Y[:, :idx]
 
 def save_array_to_path(arr, path, metadata=None):
     """
@@ -318,11 +354,13 @@ def load_aviris(folder_path: str) -> HSI:
                     site_name = val.strip()
 
     # ===== Extract dataset name from folder ===== #
-    folder_base = os.path.basename(folder_path)
-    if "rdn" in folder_base:
-        name = folder_base.split("rdn")[0]
+    img_base = os.path.basename(img_path)
+    if "rdn" in img_base:
+        name = img_base.split("rdn")[0]
+    elif "_" in img_base:
+        name = img_base.split("_")[0]
     else:
-        name = folder_base
+        name = img_base
 
     # ===== Create HSI object ===== #
     hsi = HSI(
@@ -385,7 +423,7 @@ def crop_aviris_scene(folder_path: str, section_size=(256, 256)):
         section_hsi = hsi.crop((y0, y1), (x0, x1))
 
         # Update metadata with section number
-        section_name = f"{scene_name}s{idx+1:02d}"  # s01, s02, ...
+        section_name = f"{scene_name}s{idx+1}"  # s1, s2, ...
         metadata = section_hsi.metadata.copy()
         metadata["name"] = section_name
 
@@ -583,7 +621,6 @@ class DCTBasis(TransformBasis):
     def inverse(self, s, axis=-1):
         ax = self._get_safe_axis(s, axis)
         return sp.fft.idct(s, axis=ax, type=2, norm='ortho').astype(self.transform_dtype)
-
 
 ##### Measurement Matrices #####
 
@@ -893,7 +930,6 @@ def generate_synthetic_hsi(shape, K_sparse, transform_name="DCT"):
         Y = mode_n_product(Y, Ds[n], n)
         
     return Y, X_gt
-
 
 ##### N-Way Array Operations #####
 

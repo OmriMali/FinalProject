@@ -299,10 +299,6 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
 
     print(f"[LOG] Saved run: {compressor_name}")
 
-
-
-    # ===== Save ===== #
-
 def log_learn_dictionary(D: np.ndarray, metadata: dict, base_dir="results/dictionaries"):
     """
     Save dictionary + metadata and log to CSV.

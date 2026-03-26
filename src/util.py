@@ -1,27 +1,33 @@
 import numpy as np
 import scipy as sp
+import math
 import os
+import tarfile
+from spectral import open_image
 import matplotlib.pyplot as plt
 from src import transforms
+from src.hsi import HSI
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 from abc import ABC, abstractmethod
 
+
 ##### HSI Handling #####
 
-def load_hsi(path):
-    """
-    Load an HSI as a numpy array, indexed as [y, x, z] <-> [vertical, horizontal, spectral]
-    """
-    mat = sp.io.loadmat(path)
-    mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
+# def load_hsi(path):
+#     """
+#     Load an HSI as a numpy array, indexed as [y, x, z] <-> [vertical, horizontal, spectral]
+#     """
+#     mat = sp.io.loadmat(path)
+#     mat_clean = {k: v for k, v in mat.items() if not k.startswith('__')}
 
-    if len(mat_clean) == 1:
-        data_array = next(iter(mat_clean.values()))
-    else:
-        data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
+#     if len(mat_clean) == 1:
+#         data_array = next(iter(mat_clean.values()))
+#     else:
+#         data_array = max(mat_clean.values(), key=lambda x: getattr(x, 'size', 0))
 
-    return data_array
+#     return data_array
+
 
 def get_hsi_statistics(hsi, verbose=False):
     """
@@ -119,7 +125,39 @@ def denormalize_zero_mean(hsi_norm, min_val, max_val):
     
     return (hsi_norm * half_range) + midpoint
 
-##### Data Logging #####
+##### Data #####
+
+def save_hsi(hsi: HSI, path: str):
+    """
+    Save an HSI object to a file.
+
+    Parameters
+    ----------
+    hsi : HSI
+        Hyperspectral image object to save.
+    path : str
+        Path to save the file. Should end with `.npy`.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+    np.save(path, {
+        "data": hsi.data,
+        "wavelengths": hsi.wavelengths,
+        "metadata": hsi.metadata,
+        "dtype": hsi.dtype
+    })
+
+def load_hsi(path: str) -> HSI:
+    """
+    Load an HSI object previously saved with `save_hsi`.
+    """
+    obj = np.load(path, allow_pickle=True).item()
+    return HSI(
+        data=obj["data"],
+        wavelengths=obj["wavelengths"],
+        dtype=obj["dtype"],
+        metadata=obj["metadata"]
+    )
 
 def save_array_to_path(arr, path, metadata=None):
     """
@@ -173,6 +211,195 @@ def load_array_from_path(path):
                 metadata[key[5:]] = data[key].item() if data[key].shape == () else data[key]
     
     return arr, metadata
+
+def extract_tar_gz(path, out_dir):
+    """
+    Extract a .tar.gz dataset from path to out_dir.
+    """
+    with tarfile.open(path, "r:gz") as tar:
+        tar.extractall(out_dir)
+
+def load_aviris(folder_path: str) -> HSI:
+
+    folder_path = os.path.abspath(folder_path)
+    files = os.listdir(folder_path)
+
+    # ===== Detect ort_img files ===== #
+    img_files = [f for f in files if "ort_img" in f.lower() and not f.lower().endswith(".hdr")]
+    hdr_files = [f for f in files if f.lower().endswith(".hdr")]
+    spc_files = [f for f in files if f.lower().endswith(".spc")]
+    info_files = [f for f in files if f.lower().endswith(".info")]
+
+    if not img_files:
+        raise FileNotFoundError("No ort_img image file found")
+
+    if len(img_files) > 1:
+        print(f"[WARNING] Multiple ort_img files found ({len(img_files)}). Using first.")
+
+    img_file = img_files[0]
+    img_path = os.path.join(folder_path, img_file)
+
+    # ===== Find matching HDR ===== #
+    base_name = os.path.splitext(img_file)[0]
+    hdr_candidates = [f for f in hdr_files if base_name in f]
+    if not hdr_candidates:
+        raise FileNotFoundError("No matching HDR file found")
+    hdr_file = hdr_candidates[0]
+    hdr_path = os.path.join(folder_path, hdr_file)
+
+    # ===== Parse HDR ===== #
+    header = {}
+    with open(hdr_path, "r") as f:
+        for line in f:
+            if "=" in line:
+                key, val = line.split("=", 1)
+                header[key.strip().lower()] = val.strip().lower()
+
+    samples = int(header["samples"])
+    lines = int(header["lines"])
+    bands = int(header["bands"])
+    interleave = header.get("interleave", "bip")
+    data_type = int(header.get("data type", 2))
+    byte_order = int(header.get("byte order", 1))
+
+    # ===== Map dtype ===== #
+    if data_type == 2:
+        base_dtype = np.int16
+    elif data_type == 4:
+        base_dtype = np.float32
+    else:
+        raise ValueError(f"Unsupported ENVI data type: {data_type}")
+
+    dtype = np.dtype(base_dtype).newbyteorder(">" if byte_order == 1 else "<")
+
+    # ===== Load raw data ===== #
+    cube = np.fromfile(img_path, dtype=dtype)
+    expected = samples * lines * bands
+    if cube.size != expected:
+        raise ValueError(f"Size mismatch: got {cube.size}, expected {expected}")
+
+    # ===== Reshape based on interleave ===== #
+    if interleave == "bip":
+        cube = cube.reshape((lines, samples, bands))
+    elif interleave == "bil":
+        cube = cube.reshape((lines, bands, samples))
+        cube = np.transpose(cube, (0, 2, 1))
+    elif interleave == "bsq":
+        cube = cube.reshape((bands, lines, samples))
+        cube = np.transpose(cube, (1, 2, 0))
+    else:
+        raise ValueError(f"Unknown interleave: {interleave}")
+
+    # ===== Load wavelengths ===== #
+    if spc_files:
+        spc_path = os.path.join(folder_path, spc_files[0])
+        wavelengths = np.loadtxt(spc_path, usecols=0)
+    else:
+        print("[WARNING] No SPC file found, using index wavelengths")
+        wavelengths = np.arange(bands)
+
+    # ===== Remove water absorption bands ===== #
+    mask = np.ones(len(wavelengths), dtype=bool)
+    bad_ranges = [(1340, 1445), (1790, 1955), (2480, 2600)]
+    for lo, hi in bad_ranges:
+        mask &= ~((wavelengths >= lo) & (wavelengths <= hi))
+
+    cube = cube[:, :, mask]
+    wavelengths = wavelengths[mask]
+
+    # ===== Parse .info file for site ===== #
+    site_name = "Unknown"
+    if info_files:
+        info_path = os.path.join(folder_path, info_files[0])
+        with open(info_path, "r") as f:
+            for line in f:
+                if "site_name" in line:
+                    _, val = line.split("=", 1)
+                    site_name = val.strip()
+
+    # ===== Extract dataset name from folder ===== #
+    folder_base = os.path.basename(folder_path)
+    if "rdn" in folder_base:
+        name = folder_base.split("rdn")[0]
+    else:
+        name = folder_base
+
+    # ===== Create HSI object ===== #
+    hsi = HSI(
+        data=cube,
+        wavelengths=wavelengths,
+        dtype=base_dtype,
+        metadata={
+            "name": name,
+            "site": site_name,
+            "sensor": "AVIRIS"
+        }
+    )
+
+    print(f"Loaded AVIRIS: {name} | site={site_name} | shape={cube.shape} | dtype={dtype}")
+    return hsi
+
+def crop_aviris_scene(folder_path: str, section_size=(256, 256)):
+    """
+    Crop a full AVIRIS HSI scene into smaller sections and save them.
+
+    Each section will be stored as an individual HSI object in a subfolder called 'sections'.
+    Section metadata 'name' will be updated to include section index (s01, s02, ...).
+
+    Parameters
+    ----------
+    folder_path : str
+        Path to folder containing AVIRIS scene.
+    section_size : tuple
+        Size of each section (height, width). Default is (256, 256).
+    """
+
+    # ===== Load full scene ===== #
+    hsi = load_aviris(folder_path)
+    scene_name = hsi.metadata["name"]
+
+    # ===== Prepare output folder ===== #
+    sections_folder = os.path.join(folder_path, "sections")
+    os.makedirs(sections_folder, exist_ok=True)
+
+    H, W = hsi.height, hsi.width
+    sh, sw = section_size
+
+    # ===== Compute number of sections ===== #
+    n_vert = math.ceil(H / sh)
+    n_horiz = math.ceil(W / sw)
+
+    sections = []
+    for i in range(n_vert):
+        y0 = i * sh
+        y1 = min(y0 + sh, H)
+        for j in range(n_horiz):
+            x0 = j * sw
+            x1 = min(x0 + sw, W)
+            sections.append((y0, y1, x0, x1))
+
+    print(f"Cropping HSI ({H}x{W}) into {len(sections)} sections of approx {sh}x{sw}...")
+
+    # ===== Crop, update metadata, save ===== #
+    for idx, (y0, y1, x0, x1) in enumerate(sections):
+        section_hsi = hsi.crop((y0, y1), (x0, x1))
+
+        # Update metadata with section number
+        section_name = f"{scene_name}s{idx+1:02d}"  # s01, s02, ...
+        metadata = section_hsi.metadata.copy()
+        metadata["name"] = section_name
+
+        section_hsi = HSI(
+            data=section_hsi.data,
+            wavelengths=section_hsi.wavelengths,
+            dtype=section_hsi.dtype,
+            metadata=metadata
+        )
+
+        save_path = os.path.join(sections_folder, f"{section_name}")
+        save_hsi(section_hsi, save_path)
+
+    print(f"Saved {len(sections)} sections in '{sections_folder}'")
 
 ##### Metric Calculations #####
 
@@ -284,16 +511,16 @@ def calc_compression_ratio(original_cube, bitstream, bit_depth):
 
     return original_bits / compressed_bits
 
-def compute_all_metrics(reference, target, bitstream):
+def compute_all_metrics(reference: HSI, target: HSI, bitstream):
     """
     Compute a comprehensive set of HSI performance metrics.
 
     Parameters
     ----------
-    reference : numpy.ndarray
-        The ground truth HSI cube.
-    target : numpy.ndarray
-        The reconstructed HSI cube.
+    reference : HSI
+        The ground truth HSI.
+    target : HSI
+        The reconstructed HSI.
     bitstream : bytes or list
         The resulting compressed bitstream.
 
@@ -302,13 +529,15 @@ def compute_all_metrics(reference, target, bitstream):
     dict
         A dictionary containing RMSE, PSNR, SAM, and CR.
     """
-    _, _, bit_depth = get_hsi_statistics(reference, verbose=False)
+    ref_arr = reference.data
+    target_arr = target.data
+    bitdepth = reference.bitdepth
 
     return {
-        "rmse": calc_rmse(reference, target),
-        "psnr": calc_psnr(reference, target, bit_depth),
-        "sam": calc_sam(reference, target),
-        "cr": calc_compression_ratio(reference, bitstream, bit_depth),
+        "rmse": calc_rmse(ref_arr, target_arr),
+        "psnr": calc_psnr(ref_arr, target_arr, bitdepth),
+        "sam": calc_sam(ref_arr, target_arr),
+        "cr": calc_compression_ratio(ref_arr, bitstream, bitdepth),
     }
 
 ##### Transform Bases #####

@@ -1,4 +1,5 @@
 from src.compressors.base import BaseCompressor
+from src.hsi import HSI
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
@@ -240,11 +241,9 @@ class CCSDS123(BaseCompressor):
 
         return S_rep
     
-    def compress(self, hsi):
-
-        S = self._validate_input(hsi)
-        shape = S.shape
-        smin, smax = int(np.min(S)), int(np.max(S))
+    def compress(self, hsi: HSI):
+        
+        S = hsi.data
 
         # 1. Run Predictor to get mapped residuals (delta)
         original_cb = self.progress_callback
@@ -257,9 +256,7 @@ class CCSDS123(BaseCompressor):
 
         # 3. Package metadata for reconstruction
         metadata = {
-            "shape": shape,
-            "smin": smin,
-            "smax": smax,
+            "hsi_rec_dict": hsi.to_dict(),
             "params": {
                 "local_sum_mode": self.local_sum_mode,
                 "P": self.P,
@@ -273,8 +270,9 @@ class CCSDS123(BaseCompressor):
     
     def decompress(self, bitstream_bytes, metadata):
 
-        shape = metadata["shape"]
-        smin, smax = metadata["smin"], metadata["smax"]
+        hsi_rec_dict = metadata["hsi_rec_dict"]
+        shape = hsi_rec_dict["shape"]
+        smin, smax = hsi_rec_dict["min"], hsi_rec_dict["max"]
 
         # 1. Decode bitstream back to residuals
         original_cb = self.progress_callback
@@ -284,8 +282,11 @@ class CCSDS123(BaseCompressor):
         # 2. Run inverse predictor
         self.progress_callback = lambda f: original_cb(0.25 + (f * 0.75)) if original_cb else None
         S_rec = self._decoder_predictor(delta, smin, smax)
+
+        hsi_rec = HSI(S_rec, hsi_rec_dict["wavelengths"],
+                      dtype=hsi_rec_dict["dtype"], metadata=hsi_rec_dict["metadata"])
         
-        return S_rec
+        return hsi_rec
 
 
     

@@ -1,3 +1,4 @@
+from src.hsi import HSI
 from src.compressors.base import BaseCompressor
 from src import util, measurement_matrices, transforms, recovery_algorithms
 import numpy as np
@@ -23,13 +24,12 @@ class HCS1D(BaseCompressor):
         self.Phi_name = Phi_name
         self.Psi_name = Psi_name
 
-    def compress(self, hsi):
+    def compress(self, hsi: HSI):
         if self.progress_callback:
                     self.progress_callback(0.0)
 
-        # 1. Statistics and Normalization to [-1, 1]
-        min_val, max_val, bit_depth = util.get_hsi_statistics(hsi)
-        hsi_norm = util.normalize_zero_mean(hsi, min_val, max_val)
+        # 1. Extract data cube
+        cube = hsi.get_norm_data()
         n = hsi.shape[self.axis]
         if self.progress_callback:
             self.progress_callback(0.2)
@@ -43,26 +43,23 @@ class HCS1D(BaseCompressor):
             self.progress_callback(0.4)
 
         # 3. Get Measurements
-        Y = hsi_norm.copy()
+        Y = cube.copy()
         Y = util.mode_n_product(Y, Phi, self.axis)
         if self.progress_callback:
             self.progress_callback(0.8)
 
         # 4. Quantization & Bit Packing
-        max_int = (1 << bit_depth) - 1
+        max_int = (1 << hsi.bitdepth) - 1
         Y_max = np.max(np.abs(Y))
         Y_quantized = np.clip(np.round((Y + Y_max) / 2 * max_int).astype(np.uint64), 0, max_int)
-        bitstream = util.pack_to_bit_depth(Y_quantized, bit_depth)
+        bitstream = util.pack_to_bit_depth(Y_quantized, hsi.bitdepth)
         if self.progress_callback:
             self.progress_callback(1.0)
 
         metadata = {
             "Y_shape": Y.shape,
             "Y_max": Y_max,
-            "hsi_shape": hsi.shape,
-            "hsi_min": min_val,
-            "hsi_max": max_val,
-            "bit_depth": bit_depth,
+            "hsi_rec_dict": hsi.to_dict(),
             "seed": seed,
             "params": {
                 "sparsity": self.K,
@@ -79,23 +76,20 @@ class HCS1D(BaseCompressor):
             self.progress_callback(0.0)
 
         # 1. Unpack & Dequantize
+        hsi_rec_dict = metadata["hsi_rec_dict"]
         Y_shape = metadata["Y_shape"]
         Y_max = metadata["Y_max"]
 
-        shape = metadata["hsi_shape"]
-        hsi_min = metadata["hsi_min"]
-        hsi_max = metadata["hsi_max"]
-        bit_depth = metadata["bit_depth"]
 
-        Y_quantized = util.unpack_from_bit_depth(bitstream, bit_depth, Y_shape)
-        max_int = (1 << bit_depth) - 1
+        Y_quantized = util.unpack_from_bit_depth(bitstream, hsi_rec_dict["bitdepth"], Y_shape)
+        max_int = (1 << hsi_rec_dict["bitdepth"]) - 1
         Y = (Y_quantized.astype(np.float64) / max_int) * 2 - Y_max
         if self.progress_callback:
             self.progress_callback(0.05)
 
         # 2. Setup recovery
         seed = metadata["seed"]
-        n = shape[self.axis]
+        n = hsi_rec_dict["shape"][self.axis]
         p = Y_shape[self.axis]
         Phi = measurement_matrices.get_measurement_matrix(self.Phi_name, p, n, seed)
         Psi = transforms.get_transform(self.Psi_name, n)
@@ -120,11 +114,12 @@ class HCS1D(BaseCompressor):
                 self.progress_callback(i / num_pixels)
         
         # 4. Recover the hsi
-        pixel_shape = list(shape)
+        pixel_shape = list(hsi_rec_dict["shape"])
         pixel_shape[self.axis] = D.shape[1]
         X = util.mode_n_fold(X_unfolded, self.axis, pixel_shape)
         Z = util.mode_n_product(X, Psi_norm, self.axis)
-        hsi_rec = util.denormalize_zero_mean(Z, hsi_min, hsi_max)
+
+        hsi_rec = HSI.from_normalized(Z, hsi_rec_dict)
         if self.progress_callback:
             self.progress_callback(1.0)
 

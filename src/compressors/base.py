@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
+from src.hsi import HSI
 
 class BaseCompressor(ABC):
 
@@ -22,11 +23,11 @@ class BaseCompressor(ABC):
             self.progress_callback(value)
     
     @abstractmethod
-    def compress(self, hsi) -> tuple[bytes, dict]:
+    def compress(self, hsi: HSI) -> tuple[bytes, dict]:
         """Returns (raw_bitstream, metadata_dict)"""
         pass
 
     @abstractmethod
-    def decompress(self, bitstream, metadata) -> np.ndarray:
+    def decompress(self, bitstream: bytes, metadata: dict) -> np.ndarray:
         """Returns reconstructed HSI"""
         pass

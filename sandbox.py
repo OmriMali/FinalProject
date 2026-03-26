@@ -4,14 +4,15 @@ import scipy as sp
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
+import tarfile
 
-# Load data
-hsi = util.load_hsi("raw\\Indian_pines_corrected.mat")
-minval, maxval, depth = util.get_hsi_statistics(hsi)
-hsi = util.normalize_zero_mean(hsi, minval, maxval)
+# # Load data
+# hsi = util.load_hsi("raw\\Indian_pines_corrected.mat")
+# minval, maxval, depth = util.get_hsi_statistics(hsi)
+# hsi = util.normalize_zero_mean(hsi, minval, maxval)
 
-# Reshape so columns contain spectra
-Y = util.mode_n_unfold(hsi, n=2)
+# # Reshape so columns contain spectra
+# Y = util.mode_n_unfold(hsi, n=2)
 
 # # Subsample Y
 # N_train = 1000
@@ -42,23 +43,34 @@ Y = util.mode_n_unfold(hsi, n=2)
 # print(f"Mean Sparsity: {mean_sparsity}")
 
 
-D, metadata = util.load_array_from_path("results\\learned_dicts\\D_ksvd.npz")
-T_0 = metadata['T_0']
-K = metadata['K']
+# D, metadata = util.load_array_from_path("results\\learned_dicts\\D_ksvd.npz")
+# T_0 = metadata['T_0']
+# K = metadata['K']
 
-N = Y.shape[1]
-X_full = np.zeros((K, N))
-for i in range(N):
-    X_full[:, i] = recovery_algorithms.omp(D, Y[:, i], T_0)
+# N = Y.shape[1]
+# X_full = np.zeros((K, N))
+# for i in range(N):
+#     X_full[:, i] = recovery_algorithms.omp(D, Y[:, i], T_0)
     
-Y_hat = D @ X_full
-hsi_hat = util.mode_n_fold(Y_hat, n=2, original_shape=hsi.shape)
-print(f"RMSE: {util.calc_rmse(hsi, hsi_hat)}")
-orig = visuals.to_false_color(hsi)
-rec = visuals.to_false_color(hsi_hat)
+# Y_hat = D @ X_full
+# hsi_hat = util.mode_n_fold(Y_hat, n=2, original_shape=hsi.shape)
+# print(f"RMSE: {util.calc_rmse(hsi, hsi_hat)}")
+# orig = visuals.to_false_color(hsi)
+# rec = visuals.to_false_color(hsi_hat)
+# plt.figure()
+# plt.subplot(1, 2, 1)
+# plt.imshow(orig)
+# plt.subplot(1, 2, 2)
+# plt.imshow(rec)
+# plt.show()
+
+tar_path = "raw\\f060514t01p00r09.tar.gz"
+extract_path = "raw\\jasper_ridge_f060514t01p00r09"
+hdr_path = "raw\\jasper_ridge_f060514t01p00r09\\f060514t01p00r09rdn_c\\f060514t01p00r09rdn_c_sc01_ort_img.hdr"
+folder_path = "raw\\jasper_ridge_f060514t01p00r09\\f060514t01p00r09rdn_c"
+dataset = util.HSIDataset(folder_path, verbose=True)
+
+rgb = dataset.get_rgb()
 plt.figure()
-plt.subplot(1, 2, 1)
-plt.imshow(orig)
-plt.subplot(1, 2, 2)
-plt.imshow(rec)
+plt.imshow(rgb)
 plt.show()

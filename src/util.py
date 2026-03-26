@@ -171,30 +171,6 @@ def load_hsi_from_mat(mat_path: str, name: str, site: str, sensor: str) -> HSI:
         metadata=metadata
     )
 
-def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
-    """
-    Preprocess HSI to use as training data for dictionary. 
-    Preprocessing includes unfolding to 2D along mode and subsampling N_train columns.
-    
-    Parameters
-    ----------
-    hsi : HSI
-        HSI to use as training data.
-    N_train : int
-       Max number of fibers to train on.
-    mode : int
-        Axis on which to train.
-    
-    Returns
-    --------
-    Y : ndarray
-        A 2D array of shape (:, N_train).
-    """
-
-    Y = mode_n_unfold(hsi.get_norm_data(), n=2)
-    idx = np.random.choice(Y.shape[1], N_train, replace=False)
-    return Y[:, :idx]
-
 def save_array_to_path(arr, path, metadata=None):
     """
     Save a NumPy array to a file, optionally with metadata.

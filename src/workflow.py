@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from tqdm import tqdm
 
-from src import util, dictionary_learning
+from src import util
 from src.hsi import HSI
 from src.compressors.base import BaseCompressor
 
@@ -83,9 +83,9 @@ def _append_to_csv(csv_path: str, row: dict):
 
 # ===== Running Expirements ===== #
 
-def run_compression(hsi: HSI, compressor: BaseCompressor):
+def run_compression(hsi: HSI, compressor: BaseCompressor, save_bitstream=False, save_reconstruction=False):
     """
-    Run compression and decompression on an HSI object, compute metrics, and display progress.
+    Run compression and decompression on an HSI object, compute metrics, display progress, log.
 
     Parameters
     ----------
@@ -157,34 +157,52 @@ def run_compression(hsi: HSI, compressor: BaseCompressor):
         "reconstructed_hsi": reconstructed_hsi
     }
 
+    # ===== Log ===== #
+    log_run_compression(results, save_bitstream=save_bitstream, save_reconstruction=save_reconstruction)
+
     return results
 
-def learn_dictionary_ksvd(Y: np.ndarray, dict_name: str, K: int, T_0: int,
-    max_iter: int = 30, tol: float = 1e-6, save_dict: bool = True):
+def learn_dictionary(Y: np.ndarray, dict_name: str,algorithm, base_dir = "results/dictionaries", **kwargs):
     """
-    Learn a dictionary using K-SVD.
-    """
-    print(f"\n{'='*20} Learning Dictionary using K-SVD: {dict_name} {'='*20}")
+    Top level generic dictionary learning function. Learns the dictionary and logs it.
 
-    # ===== K-SVD ===== #
-    with tqdm(total=100, desc="K-SVD", unit="%") as pbar:
+    Parameters
+    ----------
+    Y : ndarray (M, N)
+        Input signals (columns)
+    dict_name : str
+        Name of the dictionary
+    algorithm : callable
+        Dictionary learning function (e.g., k_svd)
+    **kwargs :
+        Algorithm-specific parameters
+
+    Returns
+    -------
+    D : ndarray
+        Learned dictionary
+    metadata : dict
+        Contains info about the algorithm and metrics.
+    """
+
+    algo_name = getattr(algorithm, "__name__", "unknown")
+
+    print(f"\n{'='*20} Learning Dictionary {dict_name} using the {algo_name} Algorithm {'='*20}")
+
+     # ===== Progress bar wrapper ===== #
+    with tqdm(total=100, desc=algo_name, unit="%") as pbar:
         def progress_cb(fraction):
             pbar.n = int(fraction * 100)
             pbar.refresh()
 
+        if "progress_callback" in algorithm.__code__.co_varnames:
+            kwargs["progress_callback"] = progress_cb
+
         start = time.perf_counter()
 
-        D, X = dictionary_learning.k_svd(
-            Y,
-            K=K,
-            T_0=T_0,
-            tol=tol,
-            max_iter=max_iter,
-            progress_callback=progress_cb
-        )
+        D, X = algorithm(Y, **kwargs)
 
         train_time = time.perf_counter() - start
-        progress_cb(1.0)
 
     # ===== Metrics ===== #
     err = np.linalg.norm(Y - D @ X) / np.linalg.norm(Y)
@@ -193,67 +211,29 @@ def learn_dictionary_ksvd(Y: np.ndarray, dict_name: str, K: int, T_0: int,
     print(f"Reconstruction Error: {err:.3e}")
     print(f"Mean Sparsity: {mean_sparsity:.2f}")
     print(f"Training Time: {train_time:.2f}s")
-    
+
+
     # ===== Metadata ===== #
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     metadata = {
         "name": dict_name,
-        "algorithm": "ksvd",
+        "algorithm": algo_name,
         "timestamp": timestamp,
-        "params": {
-            "K": K,
-            "T_0": T_0,
-            "max_iter": max_iter,
-            "tol": tol,
-        },
+        "params": {k: v for k, v in kwargs.items() if k != "progress_callback"},
         "metrics": {
             "reconstruction_error": err,
             "mean_sparsity": mean_sparsity,
-            "train_time": train_time
-        }
+            "train_time": train_time}
     }
 
-    # ===== Save ===== #
-    if save_dict:
-        base_name = f"{_sanitize(dict_name)}_ksvd_{timestamp}"
+    # ===== Log ===== #
+    log_learn_dictionary(D, metadata, base_dir=base_dir)
 
-        save_dir = os.path.join("results", "dictionaries")
-        
-        os.makedirs(save_dir, exist_ok=True)
-
-        save_path = os.path.join(save_dir, base_name + ".npz")
-
-        util.save_array_to_path(D, save_path, metadata=metadata)
-
-        # ===== Log CSV ===== #
-        csv_path = os.path.join(save_dir, "dict_log.csv")
-
-        row = {
-            "name": dict_name,
-            "algorithm": "ksvd",
-            "timestamp": timestamp,
-            "reconstruction_error": err,
-            "mean_sparsity": mean_sparsity,
-            "train_time": train_time,
-        }
-
-        for k, v in metadata["params"].items():
-            row[k] = v
-
-        _append_to_csv(csv_path, row)
-
-        print(f"[LOG] Dictionary saved to {save_path}")
-
-    # ===== Return ===== #
-    return {
-        "dictionary": D,
-        "coefficients": X,
-        "metadata": metadata
-    }
+    return D, metadata
 
 # ===== Logging Results ===== #
 
-def log_compression_run(results: dict, save_bitstream=False, save_reconstruction=False):
+def log_run_compression(results: dict, save_bitstream=False, save_reconstruction=False):
     """
     Log a compression run to disk.
 
@@ -319,3 +299,51 @@ def log_compression_run(results: dict, save_bitstream=False, save_reconstruction
 
     print(f"[LOG] Saved run: {compressor_name}")
 
+
+
+    # ===== Save ===== #
+
+def log_learn_dictionary(D: np.ndarray, metadata: dict, base_dir="results/dictionaries"):
+    """
+    Save dictionary + metadata and log to CSV.
+    """
+    # ---- Extract fields ---- #
+    dict_name = metadata["name"]
+    algorithm = metadata["algorithm"]
+    timestamp = metadata["timestamp"]
+
+    # ---- Sanitize ---- #
+    safe_name = _sanitize(dict_name)
+    safe_algo = _sanitize(algorithm)
+
+    # ---- Paths ---- #
+    base_name = f"{safe_name}_{safe_algo}_{timestamp}"
+    os.makedirs(base_dir, exist_ok=True)
+
+    save_path = os.path.join(base_dir, base_name + ".npz")
+
+    # ---- Save NPZ ---- #
+    util.save_array_to_path(D, save_path, metadata=metadata)
+
+    # ---- Prepare CSV row ---- #
+    row = {
+        "name": dict_name,
+        "algorithm": algorithm,
+        "timestamp": timestamp,
+    }
+
+    # Add metrics
+    for k, v in metadata.get("metrics", {}).items():
+        row[k] = v
+
+    # Add params (dynamic)
+    for k, v in metadata.get("params", {}).items():
+        row[k] = v
+
+    # ---- Append to CSV ---- #
+    csv_path = os.path.join(base_dir, "dict_log.csv")
+    _append_to_csv(csv_path, row)
+
+    print(f"[LOG] Dictionary saved to {save_path}")
+
+    return save_path

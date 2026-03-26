@@ -1,5 +1,6 @@
 import numpy as np
 from src import util
+from src.hsi import  HSI
 from tqdm import tqdm
 from src import recovery_algorithms
 
@@ -139,3 +140,30 @@ def _synth_test_k_svd(M=20, K=10, N=200, T_0=3):
     avg_sparsity = np.mean(np.count_nonzero(X_learned, axis=0))
     print("Average sparsity:", avg_sparsity)
 
+def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
+    """
+    Preprocess HSI to use as training data for dictionary.
+    Preprocessing includes: Unfolding the HSI along mode, randomly choosing N_train fibers, returning the data shaped as a 2D matrix of N_train column vectors.
+    
+    Parameters
+    ----------
+    hsi : HSI
+        HSI to use as training data.
+    N_train : int
+       Max number of fibers to train on.
+    mode : int
+        Axis on which to train.
+    
+    Returns
+    --------
+    Y : ndarray
+        A 2D array of shape (:, N_train).
+    """
+    
+    Y = util.mode_n_unfold(hsi.get_norm_data(), n=mode)
+    if N_train >= Y.shape[1]:
+        return Y
+    else:
+        idx = np.random.choice(Y.shape[1], N_train, replace=False)
+        return Y[:, idx]
+    

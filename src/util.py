@@ -1011,8 +1011,52 @@ def scaled_callback(base_callback, start, end):
         base_callback(start + progress * (end - start))
     return wrapper
 
+##### Registry #####
 
+def make_registry():
+    registry = {}
 
+    def register(name):
+        def decorator(func):
+            key = name.upper()
+            if key in registry:
+                raise ValueError(f"{name} already registered")
+            registry[key] = func
+            return func
+        return decorator
+
+    return registry, register
+
+##### Parsing #####
+
+def _auto_cast(value):
+    for cast in (int, float):
+        try:
+            return cast(value)
+        except ValueError:
+            continue
+    if value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    return value
+
+def parse_config_string(name):
+    """
+    Parses strings like:
+    'DCT'
+    'LEARNED:path=abc.npz'
+    'WAVELET:type=db4,level=3'
+    """
+    if ":" not in name:
+        return name.upper(), {}
+    
+    base, param_str = name.split(":", 1)
+
+    params = {}
+    for item in param_str.split(","):
+        key, value = item.split("=")
+        params[key.strip()] = _auto_cast(value.strip())
+
+    return base.upper(), params
 
 
 

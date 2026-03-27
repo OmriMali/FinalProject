@@ -1,32 +1,53 @@
 import numpy as np
-import scipy as sp
+from src import util
 
-def identity_matrix(m, n, rng=None):
+# ===== Registry ===== #
+
+MEASUREMENT_MATRICES, register_measurement = util.make_registry()
+
+def list_measurements():
+    return list(MEASUREMENT_MATRICES.keys())
+
+# ===== Implementations ===== #
+
+@register_measurement("IDENTITY")
+def identity_matrix(m, n, rng=None, **kwargs):
     return np.eye(m, n)
 
-def gaussian_matrix(m, n, rng=None):
+@register_measurement("GAUSSIAN")
+def gaussian_matrix(m, n, rng=None, **kwargs):
+    if rng is None:
+        rng = np.random.default_rng()
+
     M = rng.standard_normal((m, n))
     return M / np.linalg.norm(M, axis=0, keepdims=True)
 
-def subsampling_matrix(m, n, rng=None):
+@register_measurement("SUBSAMPLING")
+def subsampling_matrix(m, n, rng=None, **kwargs):
+    if rng is None:
+        rng = np.random.default_rng()
+
     if m > n:
         raise ValueError(f"Cannot have unique indices: rows (p={m}) > columns (n={n})")
+    
     matrix = np.zeros((m, n))
     col_indices = np.arange(n)
     rng.shuffle(col_indices)
     selected_indices = col_indices[:m]
+    
     matrix[np.arange(m), selected_indices] = 1.0
     return matrix
 
-MEASUREMENT_MATRICES = {
-    "IDENTITY": identity_matrix,
-    "GAUSSIAN": gaussian_matrix,
-    "SUBSAMPLING": subsampling_matrix
-}
+
+# ===== Public API ===== #
 
 def get_measurement_matrix(name, m, n, seed=None):
+    base_name, params = util.parse_config_string(name)
     try:
-        rng = np.random.default_rng(seed)
-        return MEASUREMENT_MATRICES[name](m, n, rng)
+        fn = MEASUREMENT_MATRICES[base_name]
     except KeyError:
-        raise ValueError(f"Unknown transform: {name}")
+        raise ValueError(f"Unknown measurement matrix: {name}")
+
+    rng = np.random.default_rng(seed)
+
+    return fn(m, n, rng=rng, **params)

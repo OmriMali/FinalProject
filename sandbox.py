@@ -6,46 +6,46 @@ from tqdm import tqdm
 import os
 import tarfile
 
-# # Load data
-# hsi = util.load_hsi("raw\\Indian_pines_corrected.mat")
-# minval, maxval, depth = util.get_hsi_statistics(hsi)
-# hsi = util.normalize_zero_mean(hsi, minval, maxval)
+# Load data
+hsi = util.load_hsi("raw\\Indian_pines_corrected.mat")
+minval, maxval, depth = util.get_hsi_statistics(hsi)
+hsi = util.normalize_zero_mean(hsi, minval, maxval)
 
-# # Reshape so columns contain spectra
-# Y = util.mode_n_unfold(hsi, n=2)
+# Reshape so columns contain spectra
+Y = util.mode_n_unfold(hsi, n=2)
 
-# # Subsample Y
-# N_train = 1000
-# idx = np.random.choice(Y.shape[1], N_train, replace=False)
-# Y_train = Y[:, idx]
+# Subsample Y
+N_train = 1000
+idx = np.random.choice(Y.shape[1], N_train, replace=False)
+Y_train = Y[:, idx]
 
-# # Progress bar
-# pbar = tqdm(total=100)
-# def progress_bar(fraction):
-#     pbar.n = int(100 * fraction)
-#     pbar.refresh()
+# Progress bar
+pbar = tqdm(total=100)
+def progress_bar(fraction):
+    pbar.n = int(100 * fraction)
+    pbar.refresh()
 
-# # K-SVD
-# K = 300
-# T_0 = 3
-# max_iter = 30
-# D, X = dictionary_learning.k_svd(Y_train, K, T_0, max_iter=30, progress_callback=progress_bar)
+# K-SVD
+K = 300
+T_0 = 3
+max_iter = 30
+D, X = dictionary_learning.k_svd(Y_train, K, T_0, max_iter=30, progress_callback=progress_bar)
 
-# # Save dictionary
-# util.save_array_to_path(D, "results\\learned_dicts\\D_ksvd.npz", metadata={'K': K, 'T_0': T_0})
+# Save dictionary
+util.save_array_to_path(D, "results\\learned_dicts\\D_ksvd.npz", metadata={'K': K, 'T_0': T_0})
 
-# # Reconstruction error
-# err = np.linalg.norm(Y_train - D @ X) / np.linalg.norm(Y_train)
-# print(f"Reconstruction Error: {err}")
+# Reconstruction error
+err = np.linalg.norm(Y_train - D @ X) / np.linalg.norm(Y_train)
+print(f"Reconstruction Error: {err}")
 
-# # Sparsity
-# mean_sparsity = np.mean(np.count_nonzero(X, axis=0))
-# print(f"Mean Sparsity: {mean_sparsity}")
+# Sparsity
+mean_sparsity = np.mean(np.count_nonzero(X, axis=0))
+print(f"Mean Sparsity: {mean_sparsity}")
 
 
-# D, metadata = util.load_array_from_path("results\\learned_dicts\\D_ksvd.npz")
-# T_0 = metadata['T_0']
-# K = metadata['K']
+D, metadata = util.load_array_from_path("results\\learned_dicts\\D_ksvd.npz")
+T_0 = metadata['T_0']
+K = metadata['K']
 
 # N = Y.shape[1]
 # X_full = np.zeros((K, N))
@@ -63,14 +63,3 @@ import tarfile
 # plt.subplot(1, 2, 2)
 # plt.imshow(rec)
 # plt.show()
-
-tar_path = "raw\\f060514t01p00r09.tar.gz"
-extract_path = "raw\\jasper_ridge_f060514t01p00r09"
-hdr_path = "raw\\jasper_ridge_f060514t01p00r09\\f060514t01p00r09rdn_c\\f060514t01p00r09rdn_c_sc01_ort_img.hdr"
-folder_path = "raw\\jasper_ridge_f060514t01p00r09\\f060514t01p00r09rdn_c"
-dataset = util.HSIDataset(folder_path, verbose=True)
-
-rgb = dataset.get_rgb()
-plt.figure()
-plt.imshow(rgb)
-plt.show()

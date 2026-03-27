@@ -2,33 +2,49 @@ import numpy as np
 import scipy as sp
 from src import util
 
-def identity_basis(n):
+
+# ===== Registry ===== #
+
+TRANSFORMS, register_transform = util.make_registry()
+
+def list_transforms():
+    return list(TRANSFORMS.keys())
+
+# ===== Implementations ===== #
+
+@register_transform("IDENTITY")
+def identity_basis(n, **kwargs):
     return np.eye(n)
 
-def dct_basis(n):
+@register_transform("DCT")
+def dct_basis(n, **kwargs):
     return sp.fft.dct(np.eye(n), axis=0, norm='ortho')
 
-def idct_basis(n):
+@register_transform("IDCT")
+def idct_basis(n, **kwargs):
     return sp.fft.idct(np.eye(n), axis=0, norm='ortho')
 
-def learned_basis(n, path):
+@register_transform("LEARNED")
+def learned_basis(n, path=None, **kwargs):
+    if path is None:
+        raise ValueError("LEARNED transform requires 'path'")
+
     D, _ = util.load_array_from_path(path)
+
     if n != D.shape[0]:
         raise ValueError(f"Signal length {n} does not match dictionary signals of length {D.shape[0]}")
+    
     return D
 
-TRANSFORMS = {
-    "IDENTITY": identity_basis,
-    "DCT": dct_basis,
-    "IDCT": idct_basis,
-}
+# ===== Public API ===== #
 
 def get_transform(name, n):
-    if name.startswith("LEARNED:"):
-        path = name.split(":", 1)[1]
-        name = "LEARNED"
-        return learned_basis(n, path)
+    base_name, params = util.parse_config_string(name)
+
     try:
-        return TRANSFORMS[name](n)
+        fn = TRANSFORMS[base_name]
     except KeyError:
         raise ValueError(f"Unknown transform: {name}")
+    return fn(n, **params)
+
+

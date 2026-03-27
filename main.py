@@ -13,10 +13,10 @@ hsi = util.load_hsi(r"raw\benchmarks\IndianPines.npy")
 
 # Setup Compressor
 D_path = r"results\dictionaries\IndianPines_k_svd_20260326_161718.npz"
-compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:{D_path}")
+compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
 
 # Run
-for sr in [0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5]:
+for sr in [0.8]:
     compressor.sr = sr
     results = workflow.run_compression(hsi, compressor, save_bitstream=True, save_reconstruction=True)
 

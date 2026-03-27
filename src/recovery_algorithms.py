@@ -1,8 +1,9 @@
 import numpy as np
 from src import util
 
+# ===== Implementations ===== #
 
-def omp(D, y, K, tol=1e-6, progress_callback=None):
+def omp(D, y, K, tol=1e-6, progress_callback=None, **kwargs):
     """
     OMP algorithm for sparse approximation of a vector.
 
@@ -67,7 +68,8 @@ def omp(D, y, K, tol=1e-6, progress_callback=None):
 
     return x
 
-def gomp(y, operator, K, N, eps=1e-6):
+
+def gomp(y, operator, K, N, eps=1e-6, **kwargs):
     """
     Generalized Orthogonal Matching Pursuit (gOMP) implementation.
 
@@ -129,7 +131,8 @@ def gomp(y, operator, K, N, eps=1e-6):
         
     return s_hat
 
-def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None):
+
+def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
     """
     Kronecker-OMP algorithm for sparse approximation of an N-dimensional tensor.
 
@@ -242,8 +245,9 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None):
         X[coord] = a[j]
 
     return X
-        
-def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None):
+
+
+def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
     """
     N-BOMP algorithm for sparse approximation of an N-dimensional tensor.
 

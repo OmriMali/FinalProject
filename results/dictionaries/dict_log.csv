@@ -1,0 +1,3 @@
+name,algorithm,timestamp,reconstruction_error,mean_sparsity,train_time,K,T_0,max_iter,tol
+JasperRidge,ksvd,20260326_101653,0.00781597018602915,3.122,21.303603400010616,300,3,30,1e-06
+IndianPines,k_svd,20260326_161718,0.054961124450722286,3.066,38.486049900064245,300,3,50,

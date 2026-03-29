@@ -25,7 +25,5 @@ Thumbs.db
 
 # --- Logs and Results ---
 logs/
-results/*.csv
-results/*.png
-!results/.gitkeep
-results/
+results/*
+!results/dictionaries/

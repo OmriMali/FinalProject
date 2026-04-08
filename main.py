@@ -9,14 +9,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Load HSI
-hsi = util.load_hsi(r"raw\benchmarks\IndianPines.npy")
-
+# hsi = util.load_hsi(r"raw\benchmarks\IndianPines.npy")
+hsi = util.load_hsi_from_mat(r"C:\Users\omrim\Documents\FinalProject\data\PaviaU.mat", "IP", "","")
 # Setup Compressor
 D_path = r"results\dictionaries\IndianPines_k_svd_20260326_161718.npz"
 compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
 
 # Run
-for sr in [0.8]:
+for sr in [0.2]:
     compressor.sr = sr
     results = workflow.run_compression(hsi, compressor, save_bitstream=True, save_reconstruction=True)
 

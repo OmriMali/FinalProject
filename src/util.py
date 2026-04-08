@@ -4,7 +4,7 @@ import math
 import os
 import tarfile
 import matplotlib.pyplot as plt
-from src import transforms
+
 from src.hsi import HSI
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
@@ -886,6 +886,7 @@ def generate_synthetic_hsi(shape, K_sparse, transform_name="DCT"):
     X_gt : ndarray
         The ground truth sparse core tensor.
     """
+    from src import transforms
     # 1. Generate the dictionaries (Inverse DCT matrices act as atoms)
     # If Y is sparse in DCT, it is a linear combination of IDCT atoms.
     Ds = [transforms.get_inverse_transform(transform_name, n) for n in shape]

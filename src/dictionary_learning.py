@@ -5,6 +5,7 @@ from tqdm import tqdm
 from src import recovery_algorithms
 import os
 import random
+from scipy.interpolate import CubicSpline
 
 def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
     """
@@ -103,6 +104,67 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
 
     return D, X
 
+def k_svd_aster_paper_hybrid(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
+    """
+    Implements the sparse basis construction method from the ASTER library paper.
+    Uses your original k_svd function for the training phase.
+    """
+    M, N = Y.shape
+    hsi_wl = hsi.wavelengths
+    # Convert nm to microns for ASTER library compatibility
+    hsi_wl_microns = hsi_wl / 1000.0 if np.max(hsi_wl) > 20 else hsi_wl
+    
+    # --- 1. Construct Training Set from Library ---
+    all_files = [f for f in os.listdir(folder_path) if f.endswith('.txt')]
+    library_signals = []
+    
+    for file_name in all_files:
+        try:
+            with open(os.path.join(folder_path, file_name), 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                # ASTER headers are 26 lines
+                data_lines = [l.strip() for l in lines[26:] if l.strip()]
+                if len(data_lines) < 2: 
+                    continue
+                    
+                data = np.loadtxt(data_lines)
+                lib_wl, lib_refl = data[:, 0], data[:, 1]
+                
+                # Only use files that cover the full HSI wavelength range
+                if lib_wl.min() <= hsi_wl_microns.min() and lib_wl.max() >= hsi_wl_microns.max():
+                    # Cubic Spline Interpolation as specified in the paper
+                    cs = CubicSpline(lib_wl, lib_refl)
+                    atom = cs(hsi_wl_microns)
+                    
+                    # Normalize atom to unit norm
+                    norm = np.linalg.norm(atom)
+                    if norm > 0:
+                        library_signals.append(atom / norm)
+        except: 
+            continue
+
+    if not library_signals:
+        raise ValueError("No matching ASTER library signals found for this sensor's range.")
+
+    # 2. Combine Library signals (W) and Target HSI pixels (Y)
+    W = np.column_stack(library_signals)
+    Training_Set = np.hstack([W, Y])
+    
+    # 3. Use YOUR original K-SVD to learn the dictionary
+    # Pass Training_Set to your existing k_svd function. 
+    # Note: K must be <= M to avoid the broadcast error in your original k_svd.
+    D_learned, X_learned = k_svd(
+        Training_Set, 
+        K=K, 
+        T_0=T_0, 
+        max_iter=max_iter, 
+        progress_callback=progress_callback
+    )
+    
+    # Return dictionary and coefficients for the original target Y
+    X_target = np.linalg.pinv(D_learned) @ Y
+    return D_learned, X_target
+
 def _synth_test_k_svd(M=20, K=10, N=200, T_0=3):
 
     pbar = tqdm(total=100)
@@ -169,6 +231,29 @@ def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
         idx = np.random.choice(Y.shape[1], N_train, replace=False)
         return Y[:, idx]
 
+def prep_multi_hsi_for_dict_learning(folder_path, N_train_per_hsi, mode=2):
+    """
+    Aggregates training signals from all .npy HSI files in a directory.
+    """
+    all_Y = []
+    # Find all .npy HSI files saved via util.save_hsi
+    hsi_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+    
+    if not hsi_files:
+        raise FileNotFoundError(f"No HSI files found in {folder_path}")
+
+    for f_name in hsi_files:
+        try:
+            hsi = util.load_hsi(os.path.join(folder_path, f_name))
+            # Use existing prep function to sample fibers from this section
+            Y_sub = prep_hsi_for_dict_learning(hsi, N_train=N_train_per_hsi, mode=mode)
+            all_Y.append(Y_sub)
+        except Exception as e:
+            print(f"Skipping {f_name} due to error: {e}")
+
+    # Stack all collected fibers into a single large training matrix (Bands x Total_Fibers)
+    return np.hstack(all_Y)
+
 def get_keywords_for_scene(scene_type: str):
     """
     Returns a list of keywords appropriate for a given scene type 
@@ -212,11 +297,13 @@ def get_keywords_for_scene(scene_type: str):
 
 def from_spectral_library_targeted(Y, folder_path, hsi, limit=512, correlation_threshold=0.98, keywords=None, **kwargs):
     """
-    New function: Extracts specific material signatures based on keywords 
-    and handles potential empty/malformed files.
+    Creates a dictionary by filtering spectral files for keywords AND wavelength range.
     """
-    import random
     target_wavelengths = hsi.wavelengths
+    # Determine HSI range in microns (ASTER library uses microns)
+    hsi_min = np.min(target_wavelengths) / 1000.0 if np.max(target_wavelengths) > 20 else np.min(target_wavelengths)
+    hsi_max = np.max(target_wavelengths) / 1000.0 if np.max(target_wavelengths) > 20 else np.max(target_wavelengths)
+    
     target_wl_microns = target_wavelengths / 1000.0 if np.max(target_wavelengths) > 20 else target_wavelengths
     
     atoms = []
@@ -228,60 +315,87 @@ def from_spectral_library_targeted(Y, folder_path, hsi, limit=512, correlation_t
     random.shuffle(all_files)
     
     for file_name in all_files:
-        if len(atoms) >= limit: break
+        if len(atoms) >= limit: 
+            break
+            
+        file_path = os.path.join(folder_path, file_name)
         try:
-            with open(os.path.join(folder_path, file_name), 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
                 data_content = [l.strip() for l in lines[26:] if l.strip()]
-                if not data_content: continue
+                if not data_content: 
+                    continue
+                
                 data = np.loadtxt(data_content)
-                atom = np.interp(target_wl_microns, data[:, 0], data[:, 1])
+                lib_wl = data[:, 0]
+                lib_reflectance = data[:, 1]
+                
+                # --- Wavelength Range Filter ---
+                # Only use files that cover the ENTIRE range of the current HSI
+                if lib_wl.min() > hsi_min or lib_wl.max() < hsi_max:
+                    continue
+                
+                # Interpolate to sensor bands
+                atom = np.interp(target_wl_microns, lib_wl, lib_reflectance)
+                
                 norm = np.linalg.norm(atom)
                 if norm > 0:
                     atom /= norm
+                    # Redundancy check
                     if not atoms or np.max(np.abs(np.dot(np.array(atoms), atom))) < correlation_threshold:
                         atoms.append(atom)
-        except: continue
+        except: 
+            continue
+
+    if not atoms:
+        raise ValueError(f"No atoms found covering range {hsi_min:.2f}-{hsi_max:.2f} microns.")
 
     D = np.column_stack(atoms)
     X = np.linalg.pinv(D) @ Y
     return D, X
 
-def k_svd_hybrid(Y, K, T_0, D_init, tol=1e-6, max_iter=100, progress_callback=None):
+def k_svd_aster_hybrid(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
     """
-    New function: Performs K-SVD starting from a physical library 
-    initialization instead of SVD or random signals.
+    Implements the hybrid construction method: ASTER Library + K-SVD[cite: 16, 100].
     """
-    from src import recovery_algorithms
     M, N = Y.shape
+    hsi_wl = hsi.wavelengths
+    # ASTER library uses microns; convert nm to microns if needed
+    hsi_wl_microns = hsi_wl / 1000.0 if np.max(hsi_wl) > 20 else hsi_wl
     
-    # Initialize D from the provided physical dictionary
-    D = D_init[:, :K].copy()
-    if D.shape[1] < K:
-        idx = np.random.choice(N, K - D.shape[1], replace=False)
-        D = np.hstack([D, Y[:, idx]])
+    # 1. Construct Training Set from Library using Cubic Spline Interpolation 
+    all_files = [f for f in os.listdir(folder_path) if f.endswith('.txt')]
+    library_signals = []
     
-    norms = np.linalg.norm(D, axis=0, keepdims=True)
-    D /= np.where(norms == 0, 1, norms)
-    X = np.zeros((K, N))
-    Y_norms = np.linalg.norm(Y)
+    for file_name in all_files:
+        try:
+            # Skip files that don't match ASTER naming/structure convention
+            with open(os.path.join(folder_path, file_name), 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                data = np.loadtxt([l.strip() for l in lines[26:] if l.strip()])
+                lib_wl, lib_refl = data[:, 0], data[:, 1]
+                
+                # Check if library data covers HSI range
+                if lib_wl.min() <= hsi_wl_microns.min() and lib_wl.max() >= hsi_wl_microns.max():
+                    # Cubic Spline Interpolation as specified in the paper 
+                    cs = CubicSpline(lib_wl, lib_refl)
+                    atom = cs(hsi_wl_microns)
+                    library_signals.append(atom / np.linalg.norm(atom))
+        except: continue
 
-    for J in range(1, max_iter + 1):
-        # Sparse Coding Step
-        for i in range(N):
-            X[:, i] = recovery_algorithms.omp(D, Y[:, i], T_0)
-        
-        # Dictionary Update Step
-        for k in range(K):
-            omega_k = np.where(np.abs(X[k, :]) > 1e-10)[0]
-            if len(omega_k) == 0: continue
-            
-            E_k = Y - D @ X + np.outer(D[:, k], X[k, :])
-            U, S, V_T = np.linalg.svd(E_k[:, omega_k], full_matrices=False)
-            D[:, k] = U[:, 0]
-            X[k, omega_k] = S[0] * V_T[0, :]
-
-        if progress_callback: progress_callback(J / max_iter)
-        if (np.linalg.norm(Y - D @ X) / Y_norms) < tol: break
-
-    return D, X
+    # Create the 'W' training matrix from library 
+    W = np.column_stack(library_signals)
+    
+    # 2. Initial Dictionary from Library 
+    # The paper trains from various kinds of ground object spectrum data 
+    indices = np.random.choice(W.shape[1], K, replace=False)
+    D = W[:, indices].copy()
+    
+    # 3. K-SVD Refinement 
+    # Combine library and target data to adapt dictionary to the specific sensor 
+    Training_Set = np.hstack([W, Y])
+    D_final, X_final = k_svd(Training_Set, K, T_0, max_iter=max_iter, progress_callback=progress_callback)
+    
+    # Return coefficients for the actual target Y only
+    X_target = np.linalg.pinv(D_final) @ Y
+    return D_final, X_target

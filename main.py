@@ -7,9 +7,9 @@ from src.compressors.hcs3d import HCS3D
 from src import util, workflow, dictionary_learning
 import numpy as np
 import matplotlib.pyplot as plt
-# Option 1: Dictionary Learning: 
-# a. From a given HSI
-# Load HSI
+# # Workflow 1: Dictionary Learning: 
+# # Option A: From a given HSI
+# # Load HSI
 # hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\f120507t01p00r13s27.npy")
 # # Preprocess: Unfold HSI and pick random fibers for training
 # N_TRAIN = 10000 
@@ -28,10 +28,10 @@ import matplotlib.pyplot as plt
 #     max_iter=30 # Iterations
 # )
 
-# # b. From a given spectral library:
-# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\f120507t01p00r13s27.npy")
+# # Option B: From a given spectral library:
+# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s14.npy")
 # library_folder = r"C:\Users\omrim\Documents\FinalProject\raw\ecospeclib-all"
-# Y_train = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=5000, mode=2)
+# Y_train = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=600, mode=2)
 # # Build the specialized Field dictionary
 # # Define targeted "Field" keywords based on init.txt categories
 # field_keywords = [
@@ -47,45 +47,38 @@ import matplotlib.pyplot as plt
 # D_field, metadata = workflow.learn_dictionary(
 #     Y=Y_train,
 #     dict_name="Field_Refined_Dict",
-#     algorithm=dictionary_learning.from_spectral_library,
+#     algorithm=dictionary_learning.from_spectral_library_targeted,
 #     folder_path=library_folder,
 #     hsi=hsi,
 #     limit=512,                 # Increased atom count for better coverage
 #     correlation_threshold=0.97, # Balance between diversity and detail
-#     keywords=field_keywords
+#     keywords=field_keywords  
 # )
 
-# # c. K-SVD Hybrid With Spectral Library
+# # Option C: K-SVD Hybrid following the ASTER Paper logic
 # hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s35.npy")
 # library_folder = r"C:\Users\omrim\Documents\FinalProject\raw\ecospeclib-all"
-# Y_train = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=5000, mode=2)
-# # Select the scene type
-# SCENE="lake"
-# keywords = dictionary_learning.get_keywords_for_scene(SCENE)
-# D_phys, _ = dictionary_learning.from_spectral_library_targeted(
-#     Y=Y_train, 
-#     folder_path=library_folder, 
-#     hsi=hsi, 
-#     limit=256, 
-#     keywords=keywords
-# )
-# D_final, metadata = workflow.learn_dictionary(
-#     Y=Y_train,
-#     dict_name=f"{SCENE}_hybrid_refined",
-#     algorithm=dictionary_learning.k_svd_hybrid,
-#     D_init=D_phys,  # Pass the physical base for initialization
-#     K=256,
-#     T_0=10,
-#     max_iter=30
-# )
+
+# # Sample Y for the workflow logging metrics
+# Y_log = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=2000, mode=2)
+
+# D_paper, metadata = workflow.learn_dictionary(
+#     Y=Y_log,
+#     dict_name="ASTER_Paper_Hybrid",
+#     algorithm=dictionary_learning.k_svd_aster_paper_hybrid,
+#     folder_path=library_folder,
+#     hsi=hsi,
+#     K=hsi.bands,  # Matches K to M to satisfy your original k_svd broadcast
+#     T_0=3,         # Sparsity per paper
+#     max_iter=50    # Iterations per paper
+# )  
 
 # Option 2: Run compression:
 # Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s4.npy")
+hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s20.npy")
 # Setup Compressor
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_ksvd_20260326_101653.npz"
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\urban_hybrid_refined_k_svd_hybrid_20260411_115635.npz"
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Village_Hybrid_Refined_k_svd_hybrid_20260411_105919.npz"
+D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_ksvd_20260326_101653.npz"
+# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\ASTER_Paper_Hybrid_k_svd_aster_paper_hybrid_20260412_205254.npz"
 compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
 # Run   
 for sr in [0.2]:

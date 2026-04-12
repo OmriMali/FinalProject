@@ -1059,7 +1059,31 @@ def parse_config_string(name):
 
     return base.upper(), params
 
+import numpy as np
 
+def load_spectral_signature(file_path):
+    """
+    Opens a spectral library text file and returns the data as a NumPy array.
+    
+    Parameters
+    ----------
+    file_path : str
+        Path to the .txt spectral signature file.
+        
+    Returns
+    -------
+    data : ndarray
+        A 2D array where column 0 is wavelength and column 1 is reflectance.
+    """
+    try:
+        # We use errors='ignore' to handle any non-standard characters in the header
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            # ASTER library files contain 26 lines of metadata before the data
+            data = np.loadtxt(f, skiprows=26)
+        return data
+    except Exception as e:
+        print(f"Error loading spectral file {file_path}: {e}")
+        return None
 
 
 

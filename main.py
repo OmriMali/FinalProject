@@ -5,12 +5,14 @@ from src.compressors.NBOMP import NBOMP
 from src.compressors.sparserep import SparseRep
 from src.compressors.hcs3d import HCS3D
 from src import util, workflow, dictionary_learning
+from src import transforms
 import numpy as np
 import matplotlib.pyplot as plt
+
 # # Workflow 1: Dictionary Learning: 
 # # Option A: From a given HSI
 # # Load HSI
-# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\f120507t01p00r13s27.npy")
+# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Cuprite\sections\f120507t01p00r08s67.npy")
 # # Preprocess: Unfold HSI and pick random fibers for training
 # N_TRAIN = 10000 
 # MODE = 2 # Spectral axis (bands)
@@ -20,7 +22,7 @@ import matplotlib.pyplot as plt
 # # This handles: progress bars, timing, reconstruction error, and logging to results/dictionaries/
 # D_learned, metadata = workflow.learn_dictionary(
 #     Y=Y_train,
-#     dict_name="MottField",
+#     dict_name="Cuprite",
 #     algorithm=dictionary_learning.k_svd,
 #     base_dir="results/dictionaries",
 #     K=256,      # Dictionary size
@@ -56,7 +58,7 @@ import matplotlib.pyplot as plt
 # )
 
 # # Option C: K-SVD Hybrid following the ASTER Paper logic
-# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s35.npy")
+# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Cuprite\sections\f120507t01p00r08s67.npy")
 # library_folder = r"C:\Users\omrim\Documents\FinalProject\raw\ecospeclib-all"
 
 # # Sample Y for the workflow logging metrics
@@ -64,8 +66,8 @@ import matplotlib.pyplot as plt
 
 # D_paper, metadata = workflow.learn_dictionary(
 #     Y=Y_log,
-#     dict_name="ASTER_Paper_Hybrid",
-#     algorithm=dictionary_learning.k_svd_aster_paper_hybrid,
+#     dict_name="Cuprite",
+#     algorithm=dictionary_learning.k_svd_from_spectral_library,
 #     folder_path=library_folder,
 #     hsi=hsi,
 #     K=hsi.bands,  # Matches K to M to satisfy your original k_svd broadcast
@@ -73,27 +75,28 @@ import matplotlib.pyplot as plt
 #     max_iter=50    # Iterations per paper
 # )  
 
-# Option 2: Run compression:
-# Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s20.npy")
-# Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_ksvd_20260326_101653.npz"
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\ASTER_Paper_Hybrid_k_svd_aster_paper_hybrid_20260412_205254.npz"
-compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-# Run   
-for sr in [0.2]:
-    compressor.sr = sr
-    results = workflow.run_compression(hsi, compressor, save_bitstream=True, save_reconstruction=True)
+# # Option 2: Run compression:
+# # Load HSI
+# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s130.npy")
+# # Setup Compressor
+# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_ksvd_20260326_101653.npz"
+# # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_k_svd_from_spectral_library_20260413_102600.npz"
 
-# Visualize
-rec_hsi = results["reconstructed_hsi"]
-rgb, _, _ = hsi.get_rgb()
-rec_rgb, _, _ = rec_hsi.get_rgb()
+# compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+# # Run   
+# for sr in [0.1]:
+#     compressor.sr = sr
+#     results = workflow.run_compression(hsi, compressor, save_bitstream=True, save_reconstruction=True)
 
-plt.figure()
-plt.subplot(1, 2, 1)
-plt.imshow(rgb)
-plt.subplot(1,2,2)
-plt.imshow(rec_rgb)
-plt.show()
+# # Visualize
+# rec_hsi = results["reconstructed_hsi"]
+# rgb, _, _ = hsi.get_rgb()
+# rec_rgb, _, _ = rec_hsi.get_rgb()
+
+# plt.figure()
+# plt.subplot(1, 2, 1)
+# plt.imshow(rgb)
+# plt.subplot(1,2,2)
+# plt.imshow(rec_rgb)
+# plt.show()
 

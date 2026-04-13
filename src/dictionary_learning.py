@@ -354,7 +354,7 @@ def from_spectral_library_targeted(Y, folder_path, hsi, limit=512, correlation_t
     X = np.linalg.pinv(D) @ Y
     return D, X
 
-def k_svd_aster_hybrid(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
+def k_svd_from_spectral_library(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
     """
     Implements the hybrid construction method: ASTER Library + K-SVD[cite: 16, 100].
     """

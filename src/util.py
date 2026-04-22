@@ -9,7 +9,7 @@ from src.hsi import HSI
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 from abc import ABC, abstractmethod
-
+import random
 
 ##### HSI Handling #####
 
@@ -312,13 +312,17 @@ def load_aviris(folder_path: str) -> HSI:
 
     # ===== Remove water absorption bands ===== #
     mask = np.ones(len(wavelengths), dtype=bool)
-    bad_ranges = [(1340, 1445), (1790, 1955), (2480, 2600)]
-    for lo, hi in bad_ranges:
-        mask &= ~((wavelengths >= lo) & (wavelengths <= hi))
+    bad_bands = [(104, 108), (150, 163)]
 
+    # Update the mask to False for those specific indices
+    for start, end in bad_bands:
+        # end+1 because Python slicing is exclusive at the stop index
+        mask[start:end+1] = False 
+
+    # Apply the mask to the cube and wavelengths
     cube = cube[:, :, mask]
     wavelengths = wavelengths[mask]
-
+    
     # ===== Parse .info file for site ===== #
     site_name = "Unknown"
     if info_files:
@@ -1059,8 +1063,6 @@ def parse_config_string(name):
 
     return base.upper(), params
 
-import numpy as np
-
 def load_spectral_signature(file_path):
     """
     Opens a spectral library text file and returns the data as a NumPy array.
@@ -1085,7 +1087,67 @@ def load_spectral_signature(file_path):
         print(f"Error loading spectral file {file_path}: {e}")
         return None
 
+def build_diverse_spectral_library(folder_path, threshold=0.90, max_atoms=1000):
+    """
+    Creates a library of diverse spectral vectors from pre-normalized HSI files.
+    The vectors are pulled directly from the images without further scaling.
+    """
+    # List all .npy files in the targeted folder
+    all_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
+    if not all_files:
+        raise FileNotFoundError(f"No .npy files found in {folder_path}")
 
+    library = []
+    
+    # Shuffle files to ensure material diversity across different scenes
+    random.shuffle(all_files)
 
+    print(f"Scanning files in {folder_path} for diverse pixels...")
 
+    for file_name in all_files:
+        if len(library) >= max_atoms:
+            break
+            
+        file_full_path = os.path.join(folder_path, file_name)
+        
+        # Load the HSI object
+        hsi = load_hsi(file_full_path)
+        # Use raw data because you've confirmed it is already normalized
+        Y = hsi.data.reshape(-1, hsi.bands).T
+        N_pixels = Y.shape[1]
+        
+        # Subsample to keep the correlation checks efficient
+        sample_size = min(N_pixels, 1000) 
+        pixel_indices = random.sample(range(N_pixels), sample_size)
+        
+        for idx in pixel_indices:
+            if len(library) >= max_atoms:
+                break
+                
+            current_pixel = Y[:, idx]
+            
+            # Skip zero vectors
+            if np.linalg.norm(current_pixel) < 1e-6:
+                continue
+            
+            if len(library) == 0:
+                library.append(current_pixel)
+                continue
+            
+            # Check cross-correlation (Cosine Similarity) with existing members
+            # We normalize temporarily for the check to ensure shape similarity
+            lib_matrix = np.column_stack(library)
+            
+            # Vectorized correlation check
+            curr_norm = current_pixel / np.linalg.norm(current_pixel)
+            lib_norms = lib_matrix / np.linalg.norm(lib_matrix, axis=0)
+            
+            correlations = curr_norm @ lib_norms
+            
+            # Only add to library if it is sufficiently different from all current members
+            if np.max(np.abs(correlations)) < threshold:
+                library.append(current_pixel)
 
+    result_library = np.column_stack(library)
+    print(f"Done. Diverse library contains {result_library.shape[1]} atoms.")
+    return result_library

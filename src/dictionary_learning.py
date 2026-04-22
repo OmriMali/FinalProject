@@ -295,107 +295,67 @@ def get_keywords_for_scene(scene_type: str):
         
     return registry[scene_type]
 
-def from_spectral_library_targeted(Y, folder_path, hsi, limit=512, correlation_threshold=0.98, keywords=None, **kwargs):
-    """
-    Creates a dictionary by filtering spectral files for keywords AND wavelength range.
-    """
-    target_wavelengths = hsi.wavelengths
-    # Determine HSI range in microns (ASTER library uses microns)
-    hsi_min = np.min(target_wavelengths) / 1000.0 if np.max(target_wavelengths) > 20 else np.min(target_wavelengths)
-    hsi_max = np.max(target_wavelengths) / 1000.0 if np.max(target_wavelengths) > 20 else np.max(target_wavelengths)
-    
-    target_wl_microns = target_wavelengths / 1000.0 if np.max(target_wavelengths) > 20 else target_wavelengths
-    
-    atoms = []
-    all_files = [f for f in os.listdir(folder_path) if f.endswith('.txt')]
-    
-    if keywords:
-        all_files = [f for f in all_files if any(key.lower() in f.lower() for key in keywords)]
-    
-    random.shuffle(all_files)
-    
-    for file_name in all_files:
-        if len(atoms) >= limit: 
-            break
-            
-        file_path = os.path.join(folder_path, file_name)
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-                data_content = [l.strip() for l in lines[26:] if l.strip()]
-                if not data_content: 
-                    continue
-                
-                data = np.loadtxt(data_content)
-                lib_wl = data[:, 0]
-                lib_reflectance = data[:, 1]
-                
-                # --- Wavelength Range Filter ---
-                # Only use files that cover the ENTIRE range of the current HSI
-                if lib_wl.min() > hsi_min or lib_wl.max() < hsi_max:
-                    continue
-                
-                # Interpolate to sensor bands
-                atom = np.interp(target_wl_microns, lib_wl, lib_reflectance)
-                
-                norm = np.linalg.norm(atom)
-                if norm > 0:
-                    atom /= norm
-                    # Redundancy check
-                    if not atoms or np.max(np.abs(np.dot(np.array(atoms), atom))) < correlation_threshold:
-                        atoms.append(atom)
-        except: 
-            continue
-
-    if not atoms:
-        raise ValueError(f"No atoms found covering range {hsi_min:.2f}-{hsi_max:.2f} microns.")
-
-    D = np.column_stack(atoms)
-    X = np.linalg.pinv(D) @ Y
-    return D, X
-
 def k_svd_from_spectral_library(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
     """
-    Implements the hybrid construction method: ASTER Library + K-SVD[cite: 16, 100].
+    Learns a dictionary exclusively from the ASTER spectral library as described in the paper.
+    Adjusts library signals to match sensor resolution and physical scale.
     """
     M, N = Y.shape
     hsi_wl = hsi.wavelengths
-    # ASTER library uses microns; convert nm to microns if needed
+    # ASTER/JPL library files are in micrometers. Convert nm to microns if needed.
     hsi_wl_microns = hsi_wl / 1000.0 if np.max(hsi_wl) > 20 else hsi_wl
     
-    # 1. Construct Training Set from Library using Cubic Spline Interpolation 
-    all_files = [f for f in os.listdir(folder_path) if f.endswith('.txt')]
+    # 1. Targeted Selection: Target only VSWIR signals and avoid .ancillary text files
+    all_files = [f for f in os.listdir(folder_path) if f.endswith('.spectrum.txt')]
     library_signals = []
     
     for file_name in all_files:
+        # Avoid TIR-only files as they don't cover the visible/shortwave bands
+        if 'tir' in file_name.lower() and 'vswir' not in file_name.lower():
+            continue
+
         try:
-            # Skip files that don't match ASTER naming/structure convention
             with open(os.path.join(folder_path, file_name), 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
-                data = np.loadtxt([l.strip() for l in lines[26:] if l.strip()])
+                # Skip exactly 26 lines of the ASTER header to reach numeric data
+                data_lines = [l.strip() for l in lines[26:] if l.strip()]
+                if len(data_lines) < 2: 
+                    continue
+                
+                data = np.loadtxt(data_lines)
                 lib_wl, lib_refl = data[:, 0], data[:, 1]
                 
-                # Check if library data covers HSI range
+                # Range Check: The library signal must cover the entire sensor range
                 if lib_wl.min() <= hsi_wl_microns.min() and lib_wl.max() >= hsi_wl_microns.max():
-                    # Cubic Spline Interpolation as specified in the paper 
+                    # Cubic Spline Interpolation for piecewise smoothness
                     cs = CubicSpline(lib_wl, lib_refl)
                     atom = cs(hsi_wl_microns)
-                    library_signals.append(atom / np.linalg.norm(atom))
-        except: continue
+                    
+                    # SCALE ADJUSTMENT: Normalize library atoms to [0, 1] range to fix 
+                    # the mix of 'Percentage' and 'Fractional' units in files
+                    atom = (atom - np.min(atom)) / (np.max(atom) - np.min(atom) + 1e-6)
+                    
+                    # K-SVD requires unit-norm atoms for the update step
+                    norm = np.linalg.norm(atom)
+                    if norm > 0:
+                        library_signals.append(atom / norm)
+        except Exception:
+            continue
 
-    # Create the 'W' training matrix from library 
+    if not library_signals:
+        raise ValueError("No valid library signals found matching the sensor range.")
+
+    # W is the training set constructed EXCLUSIVELY from library samples
     W = np.column_stack(library_signals)
     
-    # 2. Initial Dictionary from Library 
-    # The paper trains from various kinds of ground object spectrum data 
-    indices = np.random.choice(W.shape[1], K, replace=False)
-    D = W[:, indices].copy()
+    # 2. Train K-SVD on the library data W
+    # This adaptively constructs the basis D from physical spectral samples
+    D_final, _ = k_svd(W, K, T_0, max_iter=max_iter, progress_callback=progress_callback)
     
-    # 3. K-SVD Refinement 
-    # Combine library and target data to adapt dictionary to the specific sensor 
-    Training_Set = np.hstack([W, Y])
-    D_final, X_final = k_svd(Training_Set, K, T_0, max_iter=max_iter, progress_callback=progress_callback)
-    
-    # Return coefficients for the actual target Y only
-    X_target = np.linalg.pinv(D_final) @ Y
-    return D_final, X_target
+    # 3. Calculate X for the dummy Y to satisfy workflow metric requirements
+    # Using OMP ensures the Mean Sparsity metric reflects the T_0=3 setting
+    X_val = np.zeros((K, N))
+    for i in range(N):
+        X_val[:, i] = recovery_algorithms.omp(D_final, Y[:, i], T_0)
+        
+    return D_final, X_val

@@ -44,11 +44,10 @@ import matplotlib.pyplot as plt
 #     dict_name="Mixed",
 #     algorithm=dictionary_learning.k_svd,
 #     base_dir="results/dictionaries",
-#     K=256,      # Dictionary size
+#     K=512,      # Dictionary size
 #     T_0=10,     # Sparsity constraint
 #     max_iter=30 # Iterations
 # )
-
 
 # # Option C: K-SVD Hybrid following the ASTER Paper logic
 # hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s21.npy")
@@ -72,10 +71,10 @@ import matplotlib.pyplot as plt
 # Load HSI
 hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s53.npy")
 # Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260422_101835.npz"
+D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260423_181441.npz"
 # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_k_svd_20260420_210300.npz"
 
-compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+compressor = HCS1D(K=9, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
 # compressor = CCSDS123(P=2, a=8)
 # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 

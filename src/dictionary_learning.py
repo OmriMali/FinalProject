@@ -231,29 +231,6 @@ def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
         idx = np.random.choice(Y.shape[1], N_train, replace=False)
         return Y[:, idx]
 
-def prep_multi_hsi_for_dict_learning(folder_path, N_train_per_hsi, mode=2):
-    """
-    Aggregates training signals from all .npy HSI files in a directory.
-    """
-    all_Y = []
-    # Find all .npy HSI files saved via util.save_hsi
-    hsi_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
-    
-    if not hsi_files:
-        raise FileNotFoundError(f"No HSI files found in {folder_path}")
-
-    for f_name in hsi_files:
-        try:
-            hsi = util.load_hsi(os.path.join(folder_path, f_name))
-            # Use existing prep function to sample fibers from this section
-            Y_sub = prep_hsi_for_dict_learning(hsi, N_train=N_train_per_hsi, mode=mode)
-            all_Y.append(Y_sub)
-        except Exception as e:
-            print(f"Skipping {f_name} due to error: {e}")
-
-    # Stack all collected fibers into a single large training matrix (Bands x Total_Fibers)
-    return np.hstack(all_Y)
-
 def get_keywords_for_scene(scene_type: str):
     """
     Returns a list of keywords appropriate for a given scene type 

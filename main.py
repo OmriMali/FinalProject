@@ -37,16 +37,14 @@ import matplotlib.pyplot as plt
 #     threshold=0.995,   # Relaxed threshold to allow more signatures
 #     max_atoms=2000    # Target a much larger basis for redundancy
 #     )
-# # Execute high-level dictionary learning workflow
-# # This handles: progress bars, timing, reconstruction error, and logging to results/dictionaries/
 # D_learned, metadata = workflow.learn_dictionary(
 #     Y=Y_train,
 #     dict_name="Mixed",
 #     algorithm=dictionary_learning.k_svd,
 #     base_dir="results/dictionaries",
-#     K=512,      # Dictionary size
-#     T_0=10,     # Sparsity constraint
-#     max_iter=30 # Iterations
+#     K=410,      # Dictionary size
+#     T_0=3,     # Sparsity constraint
+#     max_iter=50 # Iterations
 # )
 
 # # Option C: K-SVD Hybrid following the ASTER Paper logic
@@ -69,12 +67,12 @@ import matplotlib.pyplot as plt
 
 # Option 2: Run compression:
 # Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s53.npy")
+hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s34.npy")
 # Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260423_181441.npz"
+D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260424_170500.npz"
 # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_k_svd_20260420_210300.npz"
 
-compressor = HCS1D(K=9, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
 # compressor = CCSDS123(P=2, a=8)
 # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 
@@ -93,4 +91,13 @@ plt.subplot(1, 2, 1)
 plt.imshow(rgb)
 plt.subplot(1,2,2)
 plt.imshow(rec_rgb)
+plt.show()
+
+row, col = np.array(hsi.shape[:2]) // 2
+plt.figure(figsize=(8, 4))
+plt.plot(hsi.wavelengths, hsi.data[row, col, :], 'k-', label='Original')
+plt.plot(hsi.wavelengths, rec_hsi.data[row, col, :], 'r--', label='Reconstructed')
+plt.title(f"Spectral Comparison at Pixel ({row}, {col})")
+plt.xlabel("Wavelength (nm)"); plt.ylabel("Intensity")
+plt.legend(); plt.grid(True, alpha=0.3)
 plt.show()

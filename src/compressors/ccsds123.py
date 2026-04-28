@@ -12,7 +12,7 @@ class CCSDS123(BaseCompressor):
     @property
     def compressor_id(self): return 11
 
-    def __init__(self, local_sum_mode='column', P=1, Omega=8, a=0, block_size=32, progress_callback=None):
+    def __init__(self, local_sum_mode='column', P=1, Omega=8, a=0, block_size=32, protected_bitstream = False, progress_callback=None):
 
         super().__init__(progress_callback=progress_callback)
         self.local_sum_mode = local_sum_mode            # Mode for local sum
@@ -20,7 +20,7 @@ class CCSDS123(BaseCompressor):
         self.Omega = Omega                              # Resolution of calculation
         self.a = a                                      # Absolute error limit (per pixel)
         self.block_size = block_size                    # Block size for encoder
-
+        self.protected_bitstream = protected_bitstream
         self._initialize_weights()    
     
     def _initialize_weights(self):
@@ -137,7 +137,7 @@ class CCSDS123(BaseCompressor):
         bits = bitarray(endian='big')
         data = delta.flatten(order='F')
         N = len(data)
-        
+        k_values = []
         total_blocks = (N + self.block_size - 1) // self.block_size
 
         for b_idx in range(total_blocks):
@@ -147,7 +147,7 @@ class CCSDS123(BaseCompressor):
             block = data[b_idx * self.block_size : min((b_idx+1)*self.block_size, N)]
             med = np.median(block) if len(block) > 0 else 0
             k = int(max(0, np.floor(np.log2(med + 1)))) if med > 0 else 0
-            
+            k_values.append(k)
             # Write k to bitstream (using 4 bits for k)
             bits.extend(int2ba(k, length=4))
 
@@ -161,7 +161,7 @@ class CCSDS123(BaseCompressor):
                 if k > 0:
                     bits.extend(int2ba(r, length=k))
 
-        return bits.tobytes()
+        return bits.tobytes(), k_values
 
     def _rice_decode(self, bitstream_bytes, shape):
 
@@ -173,8 +173,8 @@ class CCSDS123(BaseCompressor):
         
         bit_ptr = 0
         val_idx = 0
-        
-        while val_idx < N:
+        total_bits = len(bits)
+        while val_idx < N and bit_ptr < total_bits:
             if self.progress_callback: self.progress_callback(val_idx / N)
             
             # Read k (4 bits)
@@ -183,11 +183,11 @@ class CCSDS123(BaseCompressor):
             
             # Read a block of samples
             for _ in range(self.block_size):
-                if val_idx >= N: break
+                if val_idx >= N or bit_ptr >= total_bits: break
                 
                 # Decode Unary (count ones until 0)
                 q = 0
-                while bits[bit_ptr]:
+                while bit_ptr < total_bits and bits[bit_ptr]:
                     q += 1
                     bit_ptr += 1
                 bit_ptr += 1 # skip the 0
@@ -252,7 +252,10 @@ class CCSDS123(BaseCompressor):
 
         # 2. Convert residuals to actual bitstream
         self.progress_callback = lambda f: original_cb(0.75 + (f * 0.25)) if original_cb else None
-        bitstream_bytes = self._rice_encode(delta)
+        bitstream_bytes, k_values = self._rice_encode(delta)
+        protection_mask = None 
+        if self.protected_bitstream == True:
+            protected_mask = self._calculate_protection_mask(delta, k_values)
 
         # 3. Package metadata for reconstruction
         metadata = {
@@ -263,7 +266,8 @@ class CCSDS123(BaseCompressor):
                 "Omega": self.Omega,
                 "a": self.a,
                 "block_size": self.block_size
-            }
+            },
+            "protected_mask": protected_mask
         }
 
         return bitstream_bytes, metadata
@@ -288,6 +292,27 @@ class CCSDS123(BaseCompressor):
         
         return hsi_rec
 
-
-    
-
+    def _calculate_protection_mask(self, delta, k_values):
+        mask = bitarray(endian='big')
+        flat_delta = delta.flatten(order='F')
+        delta_ptr = 0
+        
+        for k in k_values:
+            # Mark the 4-bit Rice parameter header as PROTECTED
+            mask.extend('1' * 4) 
+            
+            for _ in range(self.block_size):
+                if delta_ptr >= len(flat_delta): 
+                    break
+                val = flat_delta[delta_ptr]
+                q = int(val) >> k
+                # Unary (q+1) and Remainder (k) are VULNERABLE
+                mask.extend('0' * (q + 1 + k))
+                delta_ptr += 1
+        
+        # --- NEW: Pad mask to match byte-alignment of tobytes() ---
+        padding_needed = (8 - (len(mask) % 8)) % 8
+        mask.extend('0' * padding_needed) # Padding is vulnerable
+        # ---------------------------------------------------------
+                
+        return mask

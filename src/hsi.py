@@ -187,7 +187,12 @@ class HSI:
         if self._max == self._min:
             return np.zeros_like(self._data, dtype=np.float32)
         
-        norm = (self._data.astype(np.float32) - self._min) / (self._max - self._min)
+        data_float = self._data.astype(np.float32)
+        denom = float(self._max) - float(self._min)
+        if denom == 0:
+            norm = np.zeros_like(data_float)
+        else:
+            norm = (data_float - float(self._min)) / denom
         return norm
 
     def get_band(self, idx, normalize=True):

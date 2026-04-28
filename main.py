@@ -8,6 +8,7 @@ from src import util, workflow, dictionary_learning
 from src import transforms
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 # # Workflow 1: Dictionary Learning: 
 # # Option A: From a given HSI
@@ -33,7 +34,7 @@ import matplotlib.pyplot as plt
 # # # Option B: From a created spectral library:
 # # Preprocess: Unfold HSI and pick random fibers for training
 # Y_train = util.build_diverse_spectral_library(
-#     folder_path=r"C:\Users\omrim\Documents\FinalProject\raw\Mixed", 
+#     folder_path=r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\train", 
 #     threshold=0.995,   # Relaxed threshold to allow more signatures
 #     max_atoms=2000    # Target a much larger basis for redundancy
 #     )
@@ -42,44 +43,49 @@ import matplotlib.pyplot as plt
 #     dict_name="Mixed",
 #     algorithm=dictionary_learning.k_svd,
 #     base_dir="results/dictionaries",
-#     K=410,      # Dictionary size
+#     K=256  ,      # Dictionary size
 #     T_0=3,     # Sparsity constraint
 #     max_iter=50 # Iterations
 # )
 
-# # Option C: K-SVD Hybrid following the ASTER Paper logic
-# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s21.npy")
-# library_folder = r"C:\Users\omrim\Documents\FinalProject\raw\ecospeclib-all"
+# # # Option C: K-SVD from multiple HSI
+# # Improved Option B Logic
+# all_Y = []
+# folder = r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections"
+# for filename in os.listdir(folder)[:5]: # Take 5 patches
+#     patch = util.load_hsi(os.path.join(folder, filename))
+#     # This ensures every patch is normalized exactly like Option A
+#     Y_patch = dictionary_learning.prep_hsi_for_dict_learning(patch, N_train=2000, mode=2)
+#     all_Y.append(Y_patch)
 
-# # Sample Y for the workflow logging metrics
-# Y_log = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=2000, mode=2)
-
-# D_paper, metadata = workflow.learn_dictionary(
-#     Y=Y_log,
-#     dict_name="JasperRidge",
-#     algorithm=dictionary_learning.k_svd_from_spectral_library,
-#     folder_path=library_folder,
-#     hsi=hsi,
-#     K=hsi.bands,  # Matches K to M to satisfy your original k_svd broadcast
-#     T_0=3,         # Sparsity per paper
-#     max_iter=50    # Iterations per paper
-# )  
+# Y_train = np.hstack(all_Y) # Combined training set
+# D_learned, metadata = workflow.learn_dictionary(
+#     Y=Y_train,
+#     dict_name="JasperRidge ",
+#     algorithm=dictionary_learning.k_svd,
+#     base_dir="results/dictionaries",
+#     K=256  ,      # Dictionary size
+#     T_0=3,     # Sparsity constraint
+#     max_iter=50 # Iterations
+# )
 
 # Option 2: Run compression:
 # Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s34.npy")
+hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\test\f120507t01p00r13_test_s90.npy")
 # Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260424_170500.npz"
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\JasperRidge_k_svd_20260420_210300.npz"
+D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260428_145732.npz"
+# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
 
 compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-# compressor = CCSDS123(P=2, a=8)
+# compressor = CCSDS123(P=2, a=8, local_sum_mode = "neighbor")
 # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 
 # # Run   
 for sr in [0.2]:
+    ber = 0.00000
     compressor.sr = sr
-    results = workflow.run_compression(hsi, compressor, save_bitstream=True, save_reconstruction=True)
+    compressor.protected_bitstream = (ber > 0)
+    results = workflow.run_compression(hsi, compressor, ber=ber, save_bitstream=True, save_reconstruction=True)
 
 # Visualize
 rec_hsi = results["reconstructed_hsi"]

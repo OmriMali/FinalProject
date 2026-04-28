@@ -357,28 +357,22 @@ def load_aviris(folder_path: str) -> HSI:
     print(f"Loaded AVIRIS: {name} | site={site_name} | shape={cube.shape} | dtype={dtype}")
     return hsi
 
-def crop_aviris_scene(folder_path: str, section_size=(256, 256)):
+def crop_aviris_scene(folder_path: str, section_size=(256, 256), train_ratio=0.8, seed=42):
     """
     Crop a full AVIRIS HSI scene into smaller sections and save them.
-
-    Each section will be stored as an individual HSI object in a subfolder called 'sections'.
-    Section metadata 'name' will be updated to include section index (s01, s02, ...).
-
-    Parameters
-    ----------
-    folder_path : str
-        Path to folder containing AVIRIS scene.
-    section_size : tuple
-        Size of each section (height, width). Default is (256, 256).
+    Splits into train and test subfolders and filters black patches.
     """
-
     # ===== Load full scene ===== #
     hsi = load_aviris(folder_path)
     scene_name = hsi.metadata["name"]
 
     # ===== Prepare output folder ===== #
-    sections_folder = os.path.join(folder_path, "sections")
-    os.makedirs(sections_folder, exist_ok=True)
+    base_folder = os.path.join(folder_path, "sections")
+    # Added train/test subfolders
+    train_folder = os.path.join(base_folder, "train")
+    test_folder = os.path.join(base_folder, "test")
+    os.makedirs(train_folder, exist_ok=True)
+    os.makedirs(test_folder, exist_ok=True)
 
     H, W = hsi.height, hsi.width
     sh, sw = section_size
@@ -387,23 +381,38 @@ def crop_aviris_scene(folder_path: str, section_size=(256, 256)):
     n_vert = math.ceil(H / sh)
     n_horiz = math.ceil(W / sw)
 
-    sections = []
+    coords = []
     for i in range(n_vert):
         y0 = i * sh
         y1 = min(y0 + sh, H)
         for j in range(n_horiz):
             x0 = j * sw
             x1 = min(x0 + sw, W)
-            sections.append((y0, y1, x0, x1))
+            coords.append((y0, y1, x0, x1))
 
-    print(f"Cropping HSI ({H}x{W}) into {len(sections)} sections of approx {sh}x{sw}...")
+    # ===== Shuffle and Filter ===== #
+    random.seed(seed)
+    random.shuffle(coords) # Shuffling for randomized train/test split
+
+    print(f"Cropping HSI ({H}x{W}) into sections of approx {sh}x{sw}...")
 
     # ===== Crop, update metadata, save ===== #
-    for idx, (y0, y1, x0, x1) in enumerate(sections):
+    # Filter black patches and split during save loop
+    valid_count = 0
+    for y0, y1, x0, x1 in coords:
         section_hsi = hsi.crop((y0, y1), (x0, x1))
+        
+        # Filter: Skip sections with zero dynamic range (black patches)
+        if np.max(section_hsi.data) <= np.min(section_hsi.data):
+            continue
+            
+        valid_count += 1
+        is_train = valid_count <= (len(coords) * train_ratio)
+        target_dir = train_folder if is_train else test_folder
+        label = "train" if is_train else "test"
 
         # Update metadata with section number
-        section_name = f"{scene_name}s{idx+1}"  # s1, s2, ...
+        section_name = f"{scene_name}_{label}_s{valid_count}" 
         metadata = section_hsi.metadata.copy()
         metadata["name"] = section_name
 
@@ -414,11 +423,11 @@ def crop_aviris_scene(folder_path: str, section_size=(256, 256)):
             metadata=metadata
         )
 
-        save_path = os.path.join(sections_folder, f"{section_name}")
+        save_path = os.path.join(target_dir, f"{section_name}")
         save_hsi(section_hsi, save_path)
 
-    print(f"Saved {len(sections)} sections in '{sections_folder}'")
-
+    print(f"Saved sections in '{base_folder}' (Train/Test split applied)")
+        
 ##### Metric Calculations #####
 
 def calc_rmse(reference, target):
@@ -737,6 +746,33 @@ def unpack_from_bit_depth(byte_stream, bit_depth, shape):
         unpacked[i] = ba2int(ba[start:end])
         
     return unpacked.reshape(shape)
+
+def add_bit_noise(data_bytes, ber, protected_mask=None):
+    """
+    Simulates a noisy channel where certain bits are protected from flipping.
+    """
+    if ber <= 0:
+        return data_bytes
+        
+    bits = bitarray(endian='big')
+    bits.frombytes(data_bytes)
+    
+    # Generate potential bit flips for the entire stream
+    noise_mask = np.random.choice([True, False], size=len(bits), p=[ber, 1-ber])
+    
+    # If a protection mask is provided, zero out flips in protected zones
+    if protected_mask is not None:
+        # bitwise AND: only flip if noise is True AND protected is False
+        # (Assuming protected_mask: 1 = protected, 0 = vulnerable)
+        for i in range(len(bits)):
+            if protected_mask[i]:
+                noise_mask[i] = False
+    
+    for i in range(len(bits)):
+        if noise_mask[i]:
+            bits[i] = not bits[i]
+            
+    return bits.tobytes()
 
 ##### Transform analysis #####
 
@@ -1087,67 +1123,46 @@ def load_spectral_signature(file_path):
         print(f"Error loading spectral file {file_path}: {e}")
         return None
 
-def build_diverse_spectral_library(folder_path, threshold=0.90, max_atoms=1000):
+# In util.py
+def build_diverse_spectral_library(folder_path, threshold=0.95, max_atoms=1000):
     """
-    Creates a library of diverse spectral vectors from pre-normalized HSI files.
-    The vectors are pulled directly from the images without further scaling.
+    Creates a library of diverse spectral vectors using consistent normalization.
     """
-    # List all .npy files in the targeted folder
     all_files = [f for f in os.listdir(folder_path) if f.endswith('.npy')]
-    if not all_files:
-        raise FileNotFoundError(f"No .npy files found in {folder_path}")
-
     library = []
     
-    # Shuffle files to ensure material diversity across different scenes
     random.shuffle(all_files)
 
-    print(f"Scanning files in {folder_path} for diverse pixels...")
-
-    for file_name in all_files:
-        if len(library) >= max_atoms:
-            break
+    for file_name in all_files: 
+        if len(library) >= max_atoms: break
             
-        file_full_path = os.path.join(folder_path, file_name)
+        hsi = load_hsi(os.path.join(folder_path, file_name))
         
-        # Load the HSI object
-        hsi = load_hsi(file_full_path)
-        # Use raw data because you've confirmed it is already normalized
-        Y = hsi.data.reshape(-1, hsi.bands).T
+        Y = hsi.get_norm_data().reshape(-1, hsi.bands).T 
         N_pixels = Y.shape[1]
         
-        # Subsample to keep the correlation checks efficient
-        sample_size = min(N_pixels, 1000) 
+        sample_size = min(N_pixels, 2000) 
         pixel_indices = random.sample(range(N_pixels), sample_size)
         
         for idx in pixel_indices:
-            if len(library) >= max_atoms:
-                break
-                
+            if len(library) >= max_atoms: break
             current_pixel = Y[:, idx]
             
-            # Skip zero vectors
-            if np.linalg.norm(current_pixel) < 1e-6:
-                continue
+            if np.linalg.norm(current_pixel) < 1e-6: continue
             
             if len(library) == 0:
                 library.append(current_pixel)
                 continue
             
-            # Check cross-correlation (Cosine Similarity) with existing members
-            # We normalize temporarily for the check to ensure shape similarity
+            # Vectorized correlation check using unit-norm versions
             lib_matrix = np.column_stack(library)
-            
-            # Vectorized correlation check
             curr_norm = current_pixel / np.linalg.norm(current_pixel)
             lib_norms = lib_matrix / np.linalg.norm(lib_matrix, axis=0)
             
             correlations = curr_norm @ lib_norms
             
-            # Only add to library if it is sufficiently different from all current members
+            # If the pixel is unique enough, add it to the library
             if np.max(np.abs(correlations)) < threshold:
                 library.append(current_pixel)
 
-    result_library = np.column_stack(library)
-    print(f"Done. Diverse library contains {result_library.shape[1]} atoms.")
-    return result_library
+    return np.column_stack(library)

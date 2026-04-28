@@ -102,6 +102,8 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
             break
         J += 1
 
+        
+
     return D, X
 
 def k_svd_aster_paper_hybrid(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
@@ -230,47 +232,6 @@ def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
     else:
         idx = np.random.choice(Y.shape[1], N_train, replace=False)
         return Y[:, idx]
-
-def get_keywords_for_scene(scene_type: str):
-    """
-    Returns a list of keywords appropriate for a given scene type 
-    based on the spectral library categories.
-    """
-    scene_type = scene_type.lower()
-    
-    # Mapping scenes to init.txt categories
-    registry = {
-        "field": [
-            'vegetation', 'soil', 'grass', 'shrub', 'alfalfa', 
-            'non-photosynthetic', 'mineral', 'forb'
-        ],
-        "village": [
-            'concrete', 'asphalt', 'roof', 'brick', 'wood', 
-            'metal', 'paint', 'grass', 'tree'
-        ],
-        "forest": [
-            'vegetation', 'tree', 'shrub', 'leaf', 'conifer', 
-            'bark', 'soil', 'liquid.water'
-        ],
-        "urban": [
-            'concrete', 'asphalt', 'metal', 'paint', 'glass', 
-            'brick', 'tile', 'plastic', 'soil'
-        ],
-        "lake": [
-            'liquid.water',      # Pure and natural water signatures
-            'algae',             # Critical for biological content in lakes
-            'vegetation',        # Riparian/shoreline plants
-            'mineral',           # Sediments and lake-bed materials
-            'soil',              # Wet soil at the water's edge
-            'non-photosynthetic'  # Decaying organic matter in the water
-        ]
-    }
-    
-    if scene_type not in registry:
-        print(f"[WARNING] Scene '{scene_type}' not found. Using general vegetation and soil.")
-        return ['vegetation', 'soil']
-        
-    return registry[scene_type]
 
 def k_svd_from_spectral_library(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, progress_callback=None, **kwargs):
     """

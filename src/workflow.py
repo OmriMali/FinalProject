@@ -83,7 +83,7 @@ def _append_to_csv(csv_path: str, row: dict):
 
 # ===== Running Expirements ===== #
 
-def run_compression(hsi: HSI, compressor: BaseCompressor, save_bitstream=False, save_reconstruction=False):
+def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=False, save_reconstruction=False):
     """
     Run compression and decompression on an HSI object, compute metrics, display progress, log.
 
@@ -121,7 +121,12 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, save_bitstream=False, 
         bitstream, metadata = compressor.compress(hsi)
         comp_time = time.perf_counter() - start_comp
         progress_cb(1.0)
-    
+
+    # ===== NOISY CHANNEL ===== #
+    if ber > 0:
+        print(f"[Channel] Adding noise with BER: {ber:.2e}")
+        mask = metadata.get("protected_mask", None) 
+        bitstream = util.add_bit_noise(data_bytes=bitstream, ber=ber, protected_mask=mask)
     # ===== Decompression ===== #
     with tqdm(total=100, desc="Decompression", unit="%") as pbar:
         def progress_cb_dec(fraction):

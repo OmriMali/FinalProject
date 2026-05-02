@@ -23,20 +23,27 @@ def show_hsi_rgb(hsi, bands=None, percentiles=(2, 98), title=None):
     plt.axis("off")
     plt.show()
 
-def compare_hsi_list(hsi_list, labels, bands=None, percentiles=(2, 98), figsize=(15, 5)):
+def compare_hsis(items, bands=None, percentiles=(2, 98), figsize=(15, 5)):
     """
-    Compare multiple HSI objects side-by-side, normalized to the first in the list.
+    Compare multiple HSI objects side-by-side using normalization
+    based on the first HSI only.
 
     Parameters
     ----------
-    hsi_list : list
-    labels : list of str
-    bands : tuple (R,G,B) or None
-    percentiles : tuple for contrast stretch (after normalization)
+    items : list of dict
+        Each dict must contain:
+            - "hsi": HSI object
+            - "label": str
+        Optional keys are displayed under the label.
     """
 
-    if len(hsi_list) != len(labels):
-        raise ValueError("hsi_list and labels must match")
+    if len(items) == 0:
+        raise ValueError("items list is empty")
+
+    if "hsi" not in items[0] or "label" not in items[0]:
+        raise ValueError('Each item must contain at least "hsi" and "label"')
+
+    hsi_list = [it["hsi"] for it in items]
 
     # ---- Step 1: choose bands ---- #
     if bands is None:
@@ -51,7 +58,6 @@ def compare_hsi_list(hsi_list, labels, bands=None, percentiles=(2, 98), figsize=
 
     # ---- Step 2: build RGBs ---- #
     rgb_list = []
-
     for hsi in hsi_list:
         data = hsi.get_norm_data()
 
@@ -62,7 +68,7 @@ def compare_hsi_list(hsi_list, labels, bands=None, percentiles=(2, 98), figsize=
 
         rgb_list.append(rgb)
 
-    # ---- Step 3: compute normalization ONLY from first HSI ---- #
+    # ---- Step 3: normalize using first HSI ---- #
     ref_rgb = rgb_list[0]
 
     low_p, high_p = percentiles
@@ -75,12 +81,13 @@ def compare_hsi_list(hsi_list, labels, bands=None, percentiles=(2, 98), figsize=
             if hi[c] == lo[c]:
                 out[:, :, c] = 0
             else:
-                ch = (rgb[:, :, c] - lo[c]) / (hi[c] - lo[c])
-                out[:, :, c] = np.clip(ch, 0, 1)
+                out[:, :, c] = np.clip(
+                    (rgb[:, :, c] - lo[c]) / (hi[c] - lo[c]),
+                    0, 1
+                )
         return out
 
     rgb_list = [stretch(rgb) for rgb in rgb_list]
-
 
     # ---- Step 4: plot ---- #
     n = len(rgb_list)
@@ -89,10 +96,37 @@ def compare_hsi_list(hsi_list, labels, bands=None, percentiles=(2, 98), figsize=
     if n == 1:
         axs = [axs]
 
-    for ax, rgb, label in zip(axs, rgb_list, labels):
+    for ax, rgb, item in zip(axs, rgb_list, items):
+
+        # ---- image ---- #
         ax.imshow(rgb)
-        ax.set_title(label)
         ax.axis("off")
+
+        # ---- title (clean) ---- #
+        ax.set_title(item.get("label", ""), fontsize=11, pad=8)
+
+        # ---- metadata overlay ---- #
+        extras = [
+            f"{k}: {v}"
+            for k, v in item.items()
+            if k not in ("label", "hsi")
+        ]
+
+        if extras:
+            text = "\n".join(extras)
+
+            ax.text(
+                0.02, 0.98, text,
+                transform=ax.transAxes,
+                fontsize=8,
+                verticalalignment="top",
+                horizontalalignment="left",
+                bbox=dict(
+                    facecolor="white",
+                    alpha=0.8,
+                ),
+                color="black"
+            )
 
     plt.tight_layout()
     plt.show()

@@ -34,7 +34,7 @@ data_processing.plot_multiple_series(series, "Compression Ratio", "RMSE", connec
 
 rec_hcs1d = visuals.load_recent_hsi(r"results\hcs1d\hcs1d_log.csv")
 rec_ccsds123 = visuals.load_recent_hsi(r"results\ccsds123\ccsds123_log.csv")
-visuals.compare_hsi_list([hsi, rec_hcs1d, rec_ccsds123], ["Original", "HCS1D", "CCSDS123"])
+visuals.compare_hsis([{"hsi": hsi, "label": "Original"}, {"hsi": rec_hcs1d, "label": "HCS1D", "CR": 10, "RMSE": 50}, {"hsi": rec_ccsds123, "label": "CCSDS123"}], figsize=(16,9))
 visuals.compare_spectra([hsi, rec_hcs1d, rec_ccsds123], ["Original", "HCS1D", "CCSDS123"], [(20,20), (50,50)])
 
 # # plt.figure()

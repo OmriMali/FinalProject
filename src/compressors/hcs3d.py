@@ -1,6 +1,8 @@
-from src.compressors.base import BaseCompressor
-from src.hsi import HSI
-from src import util, transforms, measurement_matrices, recovery_algorithms
+from src.compressors.base_compressor import BaseCompressor
+from src.core.hsi import HSI
+from src import util
+from src.compressors.cs import transforms, measurement_matrices
+from src.math import regression_algs, n_way_ops
 import numpy as np
 
 
@@ -43,7 +45,7 @@ class HCS3D(BaseCompressor):
         # 3. Get Measurement Array
         Y = cube.copy()
         for i in range(len(shape)):
-            Y = util.mode_n_product(Y, Phis[i], i)
+            Y = n_way_ops.mode_n_product(Y, Phis[i], i)
         if self.progress_callback:
             self.progress_callback(0.6)
 
@@ -108,12 +110,12 @@ class HCS3D(BaseCompressor):
         if self.progress_callback:
             omp_callback = util.scaled_callback(self.progress_callback, 0.1, 0.95)
        
-        X = recovery_algorithms.n_bomp(Ds, Y, self.K, tol=1e-2 ,progress_callback=omp_callback)
+        X = regression_algs.n_bomp(Ds, Y, self.K, tol=1e-2 ,progress_callback=omp_callback)
 
         # 4. Recover the hsi
         Z = X
         for n in range(len(Psis_norm)):
-            Z = util.mode_n_product(Z, Psis_norm[n], n)
+            Z = n_way_ops.mode_n_product(Z, Psis_norm[n], n)
         
         hsi_rec = HSI.from_normalized(Z, hsi_rec_dict)
         

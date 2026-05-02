@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from src.hsi import HSI
+from src.core.hsi import HSI
 
 class BaseCompressor(ABC):
 

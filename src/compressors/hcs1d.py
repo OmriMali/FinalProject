@@ -1,6 +1,8 @@
-from src.hsi import HSI
-from src.compressors.base import BaseCompressor
-from src import util, measurement_matrices, transforms, recovery_algorithms
+from src.core.hsi import HSI
+from src.compressors.base_compressor import BaseCompressor
+from src import util
+from src.compressors.cs import transforms, measurement_matrices
+from src.math import regression_algs, n_way_ops
 import numpy as np
 
 
@@ -44,7 +46,7 @@ class HCS1D(BaseCompressor):
 
         # 3. Get Measurements
         Y = cube.copy()
-        Y = util.mode_n_product(Y, Phi, self.axis)
+        Y = n_way_ops.mode_n_product(Y, Phi, self.axis)
         if self.progress_callback:
             self.progress_callback(0.8)
 
@@ -103,12 +105,12 @@ class HCS1D(BaseCompressor):
             self.progress_callback(0.1)
 
          # 3. Run recovery algorithm
-        Y_unfolded = util.mode_n_unfold(Y, self.axis)
+        Y_unfolded = n_way_ops.mode_n_unfold(Y, self.axis)
         num_pixels = Y_unfolded.shape[1]
         X_unfolded = np.zeros((D.shape[1], num_pixels))
 
         for i in range(num_pixels):
-            x_rec = recovery_algorithms.omp(D, Y_unfolded[:, i], self.K, tol=1e-2)
+            x_rec = regression_algs.omp(D, Y_unfolded[:, i], self.K, tol=1e-2)
             X_unfolded[:, i] = x_rec
             if self.progress_callback and i % 100 == 0:
                 self.progress_callback(i / num_pixels)
@@ -116,8 +118,8 @@ class HCS1D(BaseCompressor):
         # 4. Recover the hsi
         pixel_shape = list(hsi_rec_dict["shape"])
         pixel_shape[self.axis] = D.shape[1]
-        X = util.mode_n_fold(X_unfolded, self.axis, pixel_shape)
-        Z = util.mode_n_product(X, Psi_norm, self.axis)
+        X = n_way_ops.mode_n_fold(X_unfolded, self.axis, pixel_shape)
+        Z = n_way_ops.mode_n_product(X, Psi_norm, self.axis)
 
         hsi_rec = HSI.from_normalized(Z, hsi_rec_dict)
         if self.progress_callback:

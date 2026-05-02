@@ -1,5 +1,5 @@
-from src.compressors.base import BaseCompressor
-from src.hsi import HSI
+from src.compressors.base_compressor import BaseCompressor
+from src.core.hsi import HSI
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int

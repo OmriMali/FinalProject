@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import numpy as np
 from src.core.hsi import HSI
 
 class BaseCompressor(ABC):
@@ -8,15 +7,6 @@ class BaseCompressor(ABC):
         self.params = params
         self.progress_callback = progress_callback
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        pass
-    
-    @property
-    @abstractmethod
-    def compressor_id(self) -> int:
-        pass
 
     def _update_progress(self, value):
         if self.progress_callback:

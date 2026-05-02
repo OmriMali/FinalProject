@@ -1,16 +1,12 @@
 from src.compressors.base_compressor import BaseCompressor
+from src.compressors.registry import register_compressor
 from src.core.hsi import HSI
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 
+@register_compressor("ccsds123")
 class CCSDS123(BaseCompressor):
-
-    @property
-    def name(self): return "ccsds123"
-
-    @property
-    def compressor_id(self): return 11
 
     def __init__(self, local_sum_mode='column', P=1, Omega=8, a=0, block_size=32, protected_bitstream = False, progress_callback=None):
 

@@ -1,20 +1,17 @@
-from src.compressors.base_compressor import BaseCompressor
-from src.core.hsi import HSI
-from src import util
-from src.compressors.cs import transforms, measurement_matrices
-from src.math import regression_algs, n_way_ops
 import numpy as np
 
+from src.compressors.base_compressor import BaseCompressor
+from src.compressors.registry import register_compressor
+from src.math import regression_algs, n_way_ops, transforms, measurement_matrices
+from src.core.hsi import HSI
+from src import util
 
+
+
+@register_compressor("hcs3d")
 class HCS3D(BaseCompressor):
 
-    @property
-    def name(self): return "hcs3d"
-
-    @property
-    def compressor_id(self): return 22
-
-    def __init__(self, K, sr=[0.5, 0.5, 1],
+    def __init__(self, K=3, sr=[0.5, 0.5, 1],
                  Phi_names=["SUBSAMPLING", "SUBSAMPLING", "IDENTITY"],
                  Psi_names=["IDCT", "IDCT", "IDCT"], progress_callback=None):
         super().__init__(progress_callback)

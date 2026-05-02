@@ -1,23 +1,20 @@
-from src.core.hsi import HSI
-from src.compressors.base_compressor import BaseCompressor
-from src import util
-from src.compressors.cs import transforms, measurement_matrices
-from src.math import regression_algs, n_way_ops
 import numpy as np
 
+from src.compressors.base_compressor import BaseCompressor
+from src.compressors.registry import register_compressor
+from src.core.hsi import HSI
+from src.math import regression_algs, n_way_ops, transforms, measurement_matrices
+from src import util
 
+
+
+@register_compressor("hcs1d")
 class HCS1D(BaseCompressor):
     
     # Map axis to spatial\spectral
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
-    @property
-    def name(self): return "hcs1d"
-
-    @property
-    def compressor_id(self): return 21
-
-    def __init__(self, K, sr=2, axis=-1, Phi_name="SUBSAMPLING",
+    def __init__(self, K=3, sr=0.5, axis=2, Phi_name="SUBSAMPLING",
                  Psi_name="IDCT", progress_callback=None):
         super().__init__(progress_callback)
         self.sr = sr

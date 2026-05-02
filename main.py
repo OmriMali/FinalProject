@@ -4,8 +4,7 @@ from src.compressors.KCS import KCSCompressor
 from src.compressors.NBOMP import NBOMP
 from src.compressors.sparserep import SparseRep
 from src.compressors.hcs3d import HCS3D
-from src import util, workflow, dictionary_learning
-from src import transforms
+from src import util, workflow, dictionary_learning, transforms, data_processing, visuals
 import numpy as np
 import matplotlib.pyplot as plt
 import os

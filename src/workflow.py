@@ -83,7 +83,7 @@ def _append_to_csv(csv_path: str, row: dict):
 
 # ===== Running Expirements ===== #
 
-def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=False, save_reconstruction=False):
+def run_compression(hsi: HSI, compressor: BaseCompressor, tag="None" ,ber=0, save_bitstream=False, save_reconstruction=False):
     """
     Run compression and decompression on an HSI object, compute metrics, display progress, log.
 
@@ -93,6 +93,8 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=
         Hyperspectral image object
     compressor : BaseCompressor
         Compressor instance implementing
+    tag : string
+        A tag to help identify the run in the log file.
 
     Returns
     -------
@@ -128,6 +130,7 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=
         print(f"[Channel] Adding noise with BER: {ber:.2e}")
         mask = metadata.get("protected_mask", None) 
         bitstream = util.add_bit_noise(data_bytes=bitstream, ber=ber, protected_mask=mask)
+
     # ===== Decompression ===== #
     with tqdm(total=100, desc="Decompression", unit="%") as pbar:
         def progress_cb_dec(fraction):
@@ -156,6 +159,7 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=
         "sensor": sensor,
         "site": site,
         "name": name,
+        "tag": tag,
         "metrics": metrics,
         "compressor_metadata": metadata,
         "timestamp": timestamp,
@@ -270,25 +274,20 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
     # ===== Filename ===== #
     base_name = _get_base_filename(results)
 
-    # ===== Save Bitstream ===== #
-    if save_bitstream:
-        bitstream_path = os.path.join(bitstream_dir, base_name)
-        _save_bitstream(results["bitstream"], bitstream_path)
-
-    # ===== Save Reconstruction ===== #
-    if save_reconstruction:
-        recon_path = os.path.join(recon_dir, base_name)
-        util.save_hsi(results["reconstructed_hsi"], recon_path)
-
     # ===== Prepare CSV Row ===== #
     metrics = results["metrics"]
     params = results["compressor_metadata"].get("params", {})
+
+    ts = datetime.strptime(results["timestamp"], "%Y%m%d_%H%M%S")
 
     row = {
         "sensor": results["sensor"],
         "site": results["site"],
         "name": results["name"],
-        "timestamp": results["timestamp"],
+        "tag": results["tag"],
+        "timestamp": ts.isoformat(timespec="seconds"),
+        "rec_path": None,
+        "bitstream_path": None,
         "rmse": metrics["rmse"],
         "psnr": metrics["psnr"],
         "sam": metrics["sam"],
@@ -297,6 +296,18 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
         "decomp_time": metrics["decomp_time"],
         "ber": results["ber"]
     }
+
+    # ===== Save Bitstream ===== #
+    if save_bitstream:
+        bitstream_path = os.path.join(bitstream_dir, base_name)
+        row["bitstream_path"] = f"{bitstream_path}.bin"
+        _save_bitstream(results["bitstream"], bitstream_path)
+
+    # ===== Save Reconstruction ===== #
+    if save_reconstruction:
+        recon_path = os.path.join(recon_dir, base_name)
+        row["rec_path"] = f"{recon_path}.npy"
+        util.save_hsi(results["reconstructed_hsi"], recon_path)
 
     # Add compressor params dynamically
     for k, v in params.items():

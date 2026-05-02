@@ -1,11 +1,12 @@
 import numpy as np
-from src import util
-from src.hsi import  HSI
 from tqdm import tqdm
-from src import recovery_algorithms
 import os
-import random
 from scipy.interpolate import CubicSpline
+
+from src import util
+from src.core.hsi import HSI
+from src.math import regression_algs
+
 
 def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
     """
@@ -60,7 +61,7 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
         # Step 3: Sparse Coding
         for i in range(N):
             y = Y[:, i].copy()
-            X[:, i] = recovery_algorithms.omp(D, y, T_0)
+            X[:, i] = regression_algs.omp(D, y, T_0)
         
         # Step 4: Codebook Update
         for k in range(K):
@@ -294,6 +295,6 @@ def k_svd_from_spectral_library(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, 
     # Using OMP ensures the Mean Sparsity metric reflects the T_0=3 setting
     X_val = np.zeros((K, N))
     for i in range(N):
-        X_val[:, i] = recovery_algorithms.omp(D_final, Y[:, i], T_0)
+        X_val[:, i] = regression_algs.omp(D_final, Y[:, i], T_0)
         
     return D_final, X_val

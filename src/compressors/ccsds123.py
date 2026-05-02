@@ -253,7 +253,7 @@ class CCSDS123(BaseCompressor):
         # 2. Convert residuals to actual bitstream
         self.progress_callback = lambda f: original_cb(0.75 + (f * 0.25)) if original_cb else None
         bitstream_bytes, k_values = self._rice_encode(delta)
-        protection_mask = None 
+        protected_mask = None 
         if self.protected_bitstream == True:
             protected_mask = self._calculate_protection_mask(delta, k_values)
 

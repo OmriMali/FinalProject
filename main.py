@@ -4,106 +4,39 @@ from src.compressors.KCS import KCSCompressor
 from src.compressors.NBOMP import NBOMP
 from src.compressors.sparserep import SparseRep
 from src.compressors.hcs3d import HCS3D
-from src import util, workflow, dictionary_learning
-from src import transforms
+from src import util, workflow, dictionary_learning, transforms, data_processing, visuals
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-# # Workflow 1: Dictionary Learning: 
-# # Option A: From a given HSI
-# # Load HSI
-# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections\f060514t01p00r09s20.npy")
-# # Preprocess: Unfold HSI and pick random fibers for training
-# N_TRAIN = 10000 
-# MODE = 2 # Spectral axis (bands)
-# print(f"Preparing {N_TRAIN} training samples...")
-# Y_train = dictionary_learning.prep_hsi_for_dict_learning(hsi, N_train=N_TRAIN, mode=MODE)
-# # Execute high-level dictionary learning workflow
-# # This handles: progress bars, timing, reconstruction error, and logging to results/dictionaries/
-# D_learned, metadata = workflow.learn_dictionary(
-#     Y=Y_train,
-#     dict_name="JasperRidge",
-#     algorithm=dictionary_learning.k_svd,
-#     base_dir="results/dictionaries",
-#     K=256,      # Dictionary size
-#     T_0=10,     # Sparsity constraint
-#     max_iter=30 # Iterations
-# )
+D_path = r"results\dictionaries\JasperRidge_s53_k_svd_20260412_203247.npz"
 
-# # # Option B: From a created spectral library:
-# # Preprocess: Unfold HSI and pick random fibers for training
-# Y_train = util.build_diverse_spectral_library(
-#     folder_path=r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\train", 
-#     threshold=0.995,   # Relaxed threshold to allow more signatures
-#     max_atoms=2000    # Target a much larger basis for redundancy
-#     )
-# D_learned, metadata = workflow.learn_dictionary(
-#     Y=Y_train,
-#     dict_name="Mixed",
-#     algorithm=dictionary_learning.k_svd,
-#     base_dir="results/dictionaries",
-#     K=256  ,      # Dictionary size
-#     T_0=3,     # Sparsity constraint
-#     max_iter=50 # Iterations
-# )
+hsi_path = r"raw\JasperRidge\sections\f060514t01p00r09s4.npy"
+hsi = util.load_hsi(hsi_path)
 
-# # # Option C: K-SVD from multiple HSI
-# # Improved Option B Logic
-# all_Y = []
-# folder = r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections"
-# for filename in os.listdir(folder)[:5]: # Take 5 patches
-#     patch = util.load_hsi(os.path.join(folder, filename))
-#     # This ensures every patch is normalized exactly like Option A
-#     Y_patch = dictionary_learning.prep_hsi_for_dict_learning(patch, N_train=2000, mode=2)
-#     all_Y.append(Y_patch)
+compressor = HCS1D(K=3, sr=0.1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+# for sr in [0.5, 0.2, 0.1, 0.05, 0.133, 0.08, 0.0667, 0.0571]:
+    # compressor.sr = sr
+    # for i in range(1):
+# workflow.run_compression(hsi, compressor, "test_1", save_reconstruction=True, save_bitstream=True)
 
-# Y_train = np.hstack(all_Y) # Combined training set
-# D_learned, metadata = workflow.learn_dictionary(
-#     Y=Y_train,
-#     dict_name="JasperRidge ",
-#     algorithm=dictionary_learning.k_svd,
-#     base_dir="results/dictionaries",
-#     K=256  ,      # Dictionary size
-#     T_0=3,     # Sparsity constraint
-#     max_iter=50 # Iterations
-# )
+compressor = CCSDS123(local_sum_mode="column", P=2, a=300)
+# for a in [0, 10, 50, 300]:
+#     compressor.a = a
+#     for i in range(1):
+# workflow.run_compression(hsi, compressor, "test_1", save_reconstruction=True, save_bitstream=True)
 
-# Option 2: Run compression:
-# Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\test\f120507t01p00r13_test_s90.npy")
-# Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260428_145732.npz"
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
 
-compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-# compressor = CCSDS123(P=2, a=8, local_sum_mode = "neighbor")
-# compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
+series = [data_processing.get_averaged_metric_series(r"results\hcs1d\hcs1d_log.csv", "cr", "rmse", "HCS1D", ["sensor", "site", "name", "samplingrate"], {"tag": "test_1"}),
+          data_processing.get_averaged_metric_series(r"results\ccsds123\ccsds123_log.csv", "cr", "rmse", "CCSDS123", ["sensor", "site", "name", "a"], {"tag": "test_1"})]
+data_processing.plot_multiple_series(series, "Compression Ratio", "RMSE", connect_points=True)
 
-# # Run   
-for sr in [0.2]:
-    ber = 0.00000
-    compressor.sr = sr
-    compressor.protected_bitstream = (ber > 0)
-    results = workflow.run_compression(hsi, compressor, ber=ber, save_bitstream=True, save_reconstruction=True)
 
-# Visualize
-rec_hsi = results["reconstructed_hsi"]
-rgb, _, _ = hsi.get_rgb()
-rec_rgb, _, _ = rec_hsi.get_rgb()
+rec_hcs1d = visuals.load_recent_hsi(r"results\hcs1d\hcs1d_log.csv")
+rec_ccsds123 = visuals.load_recent_hsi(r"results\ccsds123\ccsds123_log.csv")
+visuals.compare_hsi_list([hsi, rec_hcs1d, rec_ccsds123], ["Original", "HCS1D", "CCSDS123"])
+visuals.compare_spectra([hsi, rec_hcs1d, rec_ccsds123], ["Original", "HCS1D", "CCSDS123"], [(20,20), (50,50)])
 
-plt.figure()
-plt.subplot(1, 2, 1)
-plt.imshow(rgb)
-plt.subplot(1,2,2)
-plt.imshow(rec_rgb)
-plt.show()
-
-row, col = np.array(hsi.shape[:2]) // 2
-plt.figure(figsize=(8, 4))
-plt.plot(hsi.wavelengths, hsi.data[row, col, :], 'k-', label='Original')
-plt.plot(hsi.wavelengths, rec_hsi.data[row, col, :], 'r--', label='Reconstructed')
-plt.title(f"Spectral Comparison at Pixel ({row}, {col})")
-plt.xlabel("Wavelength (nm)"); plt.ylabel("Intensity")
-plt.legend(); plt.grid(True, alpha=0.3)
-plt.show()
+# # plt.figure()
+# # plt.plot(hsi.wavelengths)
+# # plt.show()

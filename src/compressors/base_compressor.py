@@ -28,6 +28,6 @@ class BaseCompressor(ABC):
         pass
 
     @abstractmethod
-    def decompress(self, bitstream: bytes, metadata: dict) -> np.ndarray:
+    def decompress(self, bitstream: bytes, metadata: dict) -> HSI:
         """Returns reconstructed HSI"""
         pass

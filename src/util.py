@@ -71,22 +71,6 @@ def scaled_callback(base_callback, start, end):
         base_callback(start + progress * (end - start))
     return wrapper
 
-##### Registry #####
-
-def make_registry():
-    registry = {}
-
-    def register(name):
-        def decorator(func):
-            key = name.upper()
-            if key in registry:
-                raise ValueError(f"{name} already registered")
-            registry[key] = func
-            return func
-        return decorator
-
-    return registry, register
-
 ##### Parsing #####
 
 def _auto_cast(value):
@@ -142,7 +126,7 @@ def load_spectral_signature(file_path):
         print(f"Error loading spectral file {file_path}: {e}")
         return None
 
-# In util.py
+
 def build_diverse_spectral_library(folder_path, threshold=0.95, max_atoms=1000):
     """
     Creates a library of diverse spectral vectors using consistent normalization.

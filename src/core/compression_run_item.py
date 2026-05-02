@@ -11,7 +11,7 @@ VALID_STATUSES = {
     }
 
 @dataclass
-class ExperimentItem:
+class CompressionRunItem:
     
     # Provided on initialization
     hsi: HSI
@@ -34,11 +34,10 @@ class ExperimentItem:
     timestamp: Optional[str] = None
     output_dir: Optional[Path] = None
 
-    experiment_id: Optional[str] = None
+    run_id: Optional[str] = None
 
     status: str = "initialized"
 
-    # helpers
 
     def update_status(self, status: str):
         if status not in VALID_STATUSES:
@@ -50,9 +49,9 @@ class ExperimentItem:
             raise ValueError(f"No timestamp generated")
         
         if self.tag is None:
-            self.experiment_id = f"exp_{self.timestamp}"
+            self.run_id = f"run_{self.timestamp}"
         else:
-            self.experiment_id = f"exp_{self.timestamp}_{self.tag}"
+            self.run_id = f"run_{self.tag}_{self.timestamp}"
 
 
 

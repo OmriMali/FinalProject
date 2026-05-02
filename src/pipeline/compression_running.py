@@ -2,18 +2,16 @@ import time
 from datetime import datetime
 from tqdm import tqdm
 
-from src.core.experiment_item import ExperimentItem
+from src.core.compression_run_item import CompressionRunItem
 from src import util
 from src.compressors.registry import get_compressor
 from src.math.metrics import compute_all_metrics
-from src.pipeline.compression_logger import CompressionLogger
 
-class CompressionExperiment:
+class CompressionRunner:
+    def __init__(self, logger=None):
+        self.logger = logger
 
-    def __init__(self):
-        pass
-
-    def run(self, item: ExperimentItem) -> ExperimentItem:
+    def run(self, item: CompressionRunItem) -> CompressionRunItem:
         """
         Runs compression + decompression experiment.
         """
@@ -97,10 +95,12 @@ class CompressionExperiment:
         item.metrics = metrics
         item.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         item.update_id()
-        item.update_status("done")
 
         # 7. call logger
-        CompressionLogger().log(item)
+        if self.logger:
+            self.logger.log_compression(item)
+
+        item.update_status("done")
 
         return item
 

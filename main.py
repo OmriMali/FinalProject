@@ -10,6 +10,7 @@ from src.io import loaders, aviris
 from src.pipeline.compression_running import CompressionRunner
 from src.pipeline.dictionary_learning import DictionaryLearner
 from src.core.compression_run_item import CompressionRunItem
+from src.pipeline.logger import Logger
 
 # D_path = r"results\dictionaries\JasperRidge_s53_k_svd_20260412_203247.npz"
 
@@ -30,7 +31,8 @@ config = CompressionRunItem(
     save_hsi=True
 )
 
-result = RunCompression.run(config)
+
+result = CompressionRunner(logger=Logger()).run(config)
 recon = loaders.load_hsi(r"results\experiments\exp_20260502_172047\reconstruction.npy")
 rgb, _, _ = recon.get_rgb()
 plt.figure()

@@ -142,7 +142,7 @@ class Logger:
         if item.D is None:
             return
         
-        save_array_to_path(item.D, exp_path / f"{item.dict_name}.npz")
+        save_array_to_path(item.D, exp_path / "dictionary.npz")
 
     def _append_csv_dictionary(self, item: DictionaryLearningItem):
         row = {

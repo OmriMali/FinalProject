@@ -1,6 +1,8 @@
 import numpy as np
 import scipy as sp
+
 from src.core.registry import make_registry
+from src.io.loaders import load_array
 
 
 # ===== Registry ===== #
@@ -26,7 +28,7 @@ def learned_basis(n, path=None, **kwargs):
     if path is None:
         raise ValueError("LEARNED transform requires 'path'")
 
-    D, _ = util.load_array_from_path(path)
+    D, _ = load_array(path)
 
     if n != D.shape[0]:
         raise ValueError(f"Signal length {n} does not match dictionary signals of length {D.shape[0]}")

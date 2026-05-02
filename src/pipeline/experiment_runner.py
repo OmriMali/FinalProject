@@ -1,14 +1,15 @@
 import os
 import csv
-import pickle
 import numpy as np
 import time
 from datetime import datetime
 from tqdm import tqdm
 
 from src import util
-from src.hsi import HSI
-from src.compressors.base import BaseCompressor
+from src.math.metrics import compute_all_metrics
+from src.core.hsi import HSI
+from src.io.savers import save_hsi, save_bitstream, save_array_to_path
+from src.compressors.base_compressor import BaseCompressor
 
 
 # ===== Helpers ===== #
@@ -26,19 +27,7 @@ def _get_base_filename(results: dict) -> str:
 
     return f"{sensor}_{site}_{name}_{timestamp}"
 
-def _save_bitstream(bitstream, path: str):
-    """Save bitstream in appropriate format."""
-    if isinstance(bitstream, bytes):
-        with open(path + ".bin", "wb") as f:
-            f.write(bitstream)
 
-    elif isinstance(bitstream, np.ndarray):
-        np.save(path + ".npy", bitstream)
-
-    else:
-        # fallback
-        with open(path + ".pkl", "wb") as f:
-            pickle.dump(bitstream, f)
 
 def _append_to_csv(csv_path: str, row: dict):
     """
@@ -83,7 +72,7 @@ def _append_to_csv(csv_path: str, row: dict):
 
 # ===== Running Expirements ===== #
 
-def run_compression(hsi: HSI, compressor: BaseCompressor, tag="None" ,ber=0, save_bitstream=False, save_reconstruction=False):
+def run_compression(hsi: HSI, compressor: BaseCompressor, tag="None" ,ber=0, save_stream=False, save_reconstruction=False):
     """
     Run compression and decompression on an HSI object, compute metrics, display progress, log.
 
@@ -143,7 +132,7 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, tag="None" ,ber=0, sav
         progress_cb_dec(1.0)
     
     # ===== Metrics ===== #
-    metrics = util.compute_all_metrics(hsi, reconstructed_hsi, bitstream)
+    metrics = compute_all_metrics(hsi, reconstructed_hsi, bitstream)
     metrics.update({"comp_time": comp_time, "decomp_time": decomp_time})
 
     print(f"Compression Results | CR: {metrics['cr']:.3f} | RMSE: {metrics['rmse']:.3e} | "
@@ -167,11 +156,11 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, tag="None" ,ber=0, sav
     }
 
     # ===== Log ===== #
-    log_run_compression(results, save_bitstream=save_bitstream, save_reconstruction=save_reconstruction)
+    log_run_compression(results, save_stream=save_stream, save_reconstruction=save_reconstruction)
 
     return results
 
-def learn_dictionary(Y: np.ndarray, dict_name: str,algorithm, base_dir = "results/dictionaries", **kwargs):
+def learn_dictionary(Y: np.ndarray, dict_name: str, algorithm, base_dir = "results/dictionaries", **kwargs):
     """
     Top level generic dictionary learning function. Learns the dictionary and logs it.
 
@@ -242,7 +231,7 @@ def learn_dictionary(Y: np.ndarray, dict_name: str,algorithm, base_dir = "result
 
 # ===== Logging Results ===== #
 
-def log_run_compression(results: dict, save_bitstream=False, save_reconstruction=False):
+def log_run_compression(results: dict, save_stream=False, save_reconstruction=False):
     """
     Log a compression run to disk.
 
@@ -250,7 +239,7 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
     ----------
     results : dict
         Output from run_compression()
-    save_bitstream : bool
+    save_stream : bool
     save_reconstruction : bool
     """
 
@@ -295,16 +284,16 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
     }
 
     # ===== Save Bitstream ===== #
-    if save_bitstream:
+    if save_stream:
         bitstream_path = os.path.join(bitstream_dir, base_name)
         row["bitstream_path"] = f"{bitstream_path}.bin"
-        _save_bitstream(results["bitstream"], bitstream_path)
+        save_bitstream(results["bitstream"], bitstream_path)
 
     # ===== Save Reconstruction ===== #
     if save_reconstruction:
         recon_path = os.path.join(recon_dir, base_name)
         row["rec_path"] = f"{recon_path}.npy"
-        util.save_hsi(results["reconstructed_hsi"], recon_path)
+        save_hsi(results["reconstructed_hsi"], recon_path)
 
     # Add compressor params dynamically
     for k, v in params.items():
@@ -312,8 +301,6 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
 
     # ===== Write CSV ===== #
     _append_to_csv(csv_path, row)
-
-    print(f"[LOG] Saved run: {compressor_name}")
 
 def log_learn_dictionary(D: np.ndarray, metadata: dict, base_dir="results/dictionaries"):
     """
@@ -335,7 +322,7 @@ def log_learn_dictionary(D: np.ndarray, metadata: dict, base_dir="results/dictio
     save_path = os.path.join(base_dir, base_name + ".npz")
 
     # ---- Save NPZ ---- #
-    util.save_array_to_path(D, save_path, metadata=metadata)
+    save_array_to_path(D, save_path, metadata=metadata)
 
     # ---- Prepare CSV row ---- #
     row = {

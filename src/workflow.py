@@ -103,6 +103,7 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=
         - reconstructed_hsi
         - metrics (rmse, psnr, sam, cr, comp_time, decomp_time)
         - metadata (compressor parameters needed for reconstruction)
+        - ber (Noise)
     """
     # ===== Start ===== #
     name = hsi.metadata.get("name", "unknown_name")
@@ -159,7 +160,8 @@ def run_compression(hsi: HSI, compressor: BaseCompressor, ber=0, save_bitstream=
         "compressor_metadata": metadata,
         "timestamp": timestamp,
         "bitstream": bitstream,
-        "reconstructed_hsi": reconstructed_hsi
+        "reconstructed_hsi": reconstructed_hsi,
+        "ber": ber
     }
 
     # ===== Log ===== #
@@ -293,6 +295,7 @@ def log_run_compression(results: dict, save_bitstream=False, save_reconstruction
         "cr": metrics["cr"],
         "comp_time": metrics["comp_time"],
         "decomp_time": metrics["decomp_time"],
+        "ber": results["ber"]
     }
 
     # Add compressor params dynamically

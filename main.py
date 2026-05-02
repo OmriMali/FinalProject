@@ -66,22 +66,23 @@ import os
 #     base_dir="results/dictionaries",
 #     K=256  ,      # Dictionary size
 #     T_0=3,     # Sparsity constraint
-#     max_iter=50 # Iterations
+#     max_iter=50 # Iterations 
 # )
+
 
 # Option 2: Run compression:
 # Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\MoffetField\sections\test\f120507t01p00r13_test_s90.npy")
+hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\test\f060514t01p00r09_s11.npy")
 # Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260428_145732.npz"
+D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260501_102323.npz"
 # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
 
-compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-# compressor = CCSDS123(P=2, a=8, local_sum_mode = "neighbor")
+# compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+compressor = CCSDS123(P=2, a=400)
 # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 
 # # Run   
-for sr in [0.2]:
+for sr in [0.1]:
     ber = 0.00000
     compressor.sr = sr
     compressor.protected_bitstream = (ber > 0)
@@ -107,3 +108,49 @@ plt.title(f"Spectral Comparison at Pixel ({row}, {col})")
 plt.xlabel("Wavelength (nm)"); plt.ylabel("Intensity")
 plt.legend(); plt.grid(True, alpha=0.3)
 plt.show()
+
+
+# # Option C: run sweep compression
+# # 1. Setup Paths
+# # Point to your deterministic test folder created by split_aviris_sections
+# test_folder = r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\test"
+# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260501_102323.npz"
+
+# # Get list of all available test patches
+# test_files = [f for f in os.listdir(test_folder) if f.endswith('.npy')]
+
+# # 2. Define Benchmark Parameters
+# # sr_values = [0.1, 0.125, 0.15, 0.175, 0.2, 0.3, 0.4, 0.5]
+# sr_values = [0.0833, 0.0667, 0.05]
+# a_values = [0, 2, 8, 16, 32, 64, 128, 256, 400, 800]
+# iterations = 10 
+
+# # 3. Execution Loop for HCS1D
+# print(f"\n{'='*20} RUNNING HCS1D BENCHMARK (RANDOM SAMPLING) {'='*20}")
+# for sr in sr_values:
+#     print(f"\n>>> Target SR: {sr}")
+#     for i in range(iterations):
+#         # Sample a random HSI from the test set for this iteration
+#         random_file = random.choice(test_files)
+#         hsi = util.load_hsi(os.path.join(test_folder, random_file))
+        
+#         print(f"Iteration {i+1}/{iterations} | File: {random_file}")
+        
+#         hcs = HCS1D(K=3, sr=sr, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+#         workflow.run_compression(hsi, hcs, ber=0, save_bitstream=True, save_reconstruction=False)
+
+# # # 4. Execution Loop for CCSDS123
+# print(f"\n{'='*20} RUNNING CCSDS123 BENCHMARK (RANDOM SAMPLING) {'='*20}")
+# for a_val in a_values:
+#     print(f"\n>>> Error Limit (a): {a_val}")
+#     for i in range(iterations):
+#         # Sample a random HSI from the test set for this iteration
+#         random_file = random.choice(test_files)
+#         hsi = util.load_hsi(os.path.join(test_folder, random_file))
+        
+#         print(f"Iteration {i+1}/{iterations} | File: {random_file}")
+        
+#         ccs = CCSDS123(P=2, a=a_val)
+#         workflow.run_compression(hsi, ccs, ber=0, save_bitstream=True, save_reconstruction=False)
+
+# print("\nBenchmark complete. 180 total runs logged with randomized scene selection.")

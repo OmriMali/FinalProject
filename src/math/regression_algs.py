@@ -1,7 +1,6 @@
 import numpy as np
-from src import util
+from src.math import n_way_ops
 
-# ===== Implementations ===== #
 
 def omp(D, y, K, tol=1e-6, progress_callback=None, **kwargs):
     """
@@ -182,7 +181,7 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
         # Step 3: Find atom indices with max correlation
         corr = R.copy()
         for n, D in enumerate(Ds):
-            corr = util.mode_n_product(corr, D.T, n)
+            corr = n_way_ops.mode_n_product(corr, D.T, n)
         indices = np.unravel_index(np.argmax(np.abs(corr)), corr.shape)
         
         # Step 4: Update indices lists and W matrices
@@ -197,7 +196,7 @@ def kronecker_omp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
 
         p_temp = Y.copy()
         for n in range(N):
-            p_temp = util.mode_n_product(p_temp, ws[n].reshape(1, -1), n)
+            p_temp = n_way_ops.mode_n_product(p_temp, ws[n].reshape(1, -1), n)
         p = np.append(p, p_temp.item())
 
         if k == 1:
@@ -295,7 +294,7 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
         # Step 3: Find atom indices with max correlation
         corr = R.copy()
         for n, D in enumerate(Ds):
-            corr = util.mode_n_product(corr, D.T, n)
+            corr = n_way_ops.mode_n_product(corr, D.T, n)
         indices = np.unravel_index(np.argmax(np.abs(corr)), corr.shape)
         
         # Step 4: Update indices lists and B matrices
@@ -312,8 +311,8 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
             B = Bs[n]
             G = B.T @ B
 
-            Z_prev = util.mode_n_product(Z_prev, B.T, n)
-            Z_prev_n = util.mode_n_unfold(Z_prev, n)
+            Z_prev = n_way_ops.mode_n_product(Z_prev, B.T, n)
+            Z_prev_n = n_way_ops.mode_n_unfold(Z_prev, n)
             
             L = np.linalg.cholesky(G + 1e-10*np.eye(G.shape[0]))
             Y_tmp = np.linalg.solve(L, Z_prev_n)
@@ -321,14 +320,14 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
             
             new_shape = list(Z_prev.shape)
             new_shape[n] = B.shape[1]
-            Z_prev = util.mode_n_fold(Z_n, n, new_shape)
+            Z_prev = n_way_ops.mode_n_fold(Z_n, n, new_shape)
 
         A = Z_prev
 
         # Step 6: Update residual
         Y_hat = A
         for n in range(N):
-            Y_hat = util.mode_n_product(Y_hat, Bs[n], n)
+            Y_hat = n_way_ops.mode_n_product(Y_hat, Bs[n], n)
         
         R = Y - Y_hat
 

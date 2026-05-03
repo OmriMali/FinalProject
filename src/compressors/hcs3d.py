@@ -35,13 +35,15 @@ class HCS3DConfig:
 @register_compressor("hcs3d")
 class HCS3D(BaseCompressor):
 
+    Config = HCS3DConfig
+
     def __init__(self, config: HCS3DConfig, progress_callback=None):
         super().__init__(progress_callback)
-        self.K = config.K
-        self.sr = config.sr
-        self.Phi_names = config.Phi_names
-        self.Psi_names = config.Psi_names
 
+        self.config = config
+        self.__dict__.update(config.__dict__)
+    
+    
     def compress(self, hsi: HSI):
         if self.progress_callback:
             self.progress_callback(0.0)

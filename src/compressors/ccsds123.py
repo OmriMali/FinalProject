@@ -43,15 +43,15 @@ class CCSDS123Config:
 
 @register_compressor("ccsds123")
 class CCSDS123(BaseCompressor):
-    def __init__(self, config: CCSDS123Config, progress_callback=None):
 
+    Config = CCSDS123Config
+
+    def __init__(self, config: CCSDS123Config, progress_callback=None):
         super().__init__(progress_callback=progress_callback)
-        self.local_sum_mode = config.local_sum_mode            
-        self.P = config.P                                      
-        self.Omega = config.Omega                              
-        self.a = config.a                                      
-        self.block_size = config.block_size                    
-        self.protected_bitstream = config.protected_bitstream
+
+        self.config = config
+        self.__dict__.update(config.__dict__)
+        
         self._initialize_weights()    
     
     def _initialize_weights(self):

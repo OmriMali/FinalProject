@@ -24,7 +24,7 @@ class HCS1DConfig:
     axis: int
         Axis to compress (H, W, B).
     
-    Phi_name : sr
+    Phi_name : str
         Measurement matrix name.
 
     Psi_name : str
@@ -39,17 +39,17 @@ class HCS1DConfig:
 
 @register_compressor("hcs1d")
 class HCS1D(BaseCompressor):
+
+    Config = HCS1DConfig
     
-    # Map axis to spatial\spectral
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
     def __init__(self, config: HCS1DConfig, progress_callback=None):
         super().__init__(progress_callback)
-        self.sr = config.sr
-        self.K = config.K
-        self.axis = config.axis
-        self.Phi_name = config.Phi_name
-        self.Psi_name = config.Psi_name
+        
+        self.config = config
+        self.__dict__.update(config.__dict__)
+
 
     def compress(self, hsi: HSI):
         if self.progress_callback:

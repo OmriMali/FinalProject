@@ -1,14 +1,38 @@
 import numpy as np
-from tqdm import tqdm
 import os
 from scipy.interpolate import CubicSpline
+from dataclasses import dataclass
 
-from src import util
 from src.core.hsi import HSI
-from src.math import regression_algs
+from src.math import regression_algs, n_way_ops
 
 
-def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
+@dataclass
+class K_SVDConfig:
+    """
+    Configuration for K_SVD dictionary learner.
+
+    Parameters
+    ----------
+    K : int
+        Number of atoms in output dictionary.
+
+    T_0 : int
+        Target sparsity level for the input signals.
+
+    tol : float
+        Stopping threshold based on relative error of Y - DX.
+    
+    max_iter : int
+        Stopping condition based on maximum iterations.
+    """
+    K: int
+    T_0: int
+    tol: float = 1e-2
+    max_iter: int = 50
+
+
+def k_svd(Y, config: K_SVDConfig, progress_callback=None):
     """
     K-SVD algorithm for dictionary learning.
 
@@ -17,13 +41,13 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
     Y : ndarray
         Input signals to learn, arranged as column vectors of a 2D arra of shape (M, N)
     K : int
-        Size of the output dictionary.
+        Number of atoms in output dictionary.
     T_0 : int
-        The sparsity level to be obtained by the dictionary for the input signals.
-    tol : float, optional
+        Target sparsity level for the input signals.
+    tol : float
         Stopping threshold based on relative error of Y - DX.
-    max_iter : int, optional
-        Maximum iterations for the algorithm.
+    max_iter : int
+        Stopping condition based on maximum iterations.
     progress_callback : float, optional
         Updates an external progress bar.
 
@@ -34,6 +58,12 @@ def k_svd(Y, K, T_0, tol=1e-6, max_iter=100, progress_callback=None):
     X : ndarray
         The coefficient vectors arragned in a matrix of size (K, N) satisfying Y~=DX. 
     """
+    # step 0: unpack config
+    K = config.K
+    T_0 = config.T_0
+    tol = config.tol
+    max_iter = config.max_iter
+
     # Step 1: Initialize
     M, N = Y.shape
 
@@ -168,45 +198,6 @@ def k_svd_aster_paper_hybrid(Y, folder_path, hsi, K=128, T_0=3, max_iter=50, pro
     X_target = np.linalg.pinv(D_learned) @ Y
     return D_learned, X_target
 
-def _synth_test_k_svd(M=20, K=10, N=200, T_0=3):
-
-    pbar = tqdm(total=100)
-    def progress_bar(fraction):
-        pbar.n = int(100 * fraction)
-        pbar.refresh()
-
-    # Dictionary Generation
-    np.random.seed(0)
-    D_true = np.random.randn(M, K)
-    D_true /= np.linalg.norm(D_true, axis=0, keepdims=True)
-
-    # Sparse Coefficients Generation
-    X_true = np.zeros((K, N))
-    for i in range(N):
-        idx = np.random.choice(K, T_0, replace=False)
-        X_true[idx, i] = np.random.randn(T_0)
-    
-    # Generate Signals
-    Y = D_true @ X_true
-
-    # Run K-SVD
-    D_learned, X_learned = k_svd(Y, K, T_0, max_iter=100, progress_callback=progress_bar)
-    pbar.close()
-
-    # Reconstruction error
-    err = np.linalg.norm(Y - D_learned @ X_learned) / np.linalg.norm(Y)
-    print("Reconstruction error:", err)
-
-    # Dictionary Correlation
-    C = np.abs(D_true.T @ D_learned)
-    max_corr = np.max(C, axis=1)
-    print("Mean atom recovery:", np.mean(max_corr))
-    print("Min atom recovery:", np.min(max_corr))
-
-    # Sparsity Check
-    avg_sparsity = np.mean(np.count_nonzero(X_learned, axis=0))
-    print("Average sparsity:", avg_sparsity)
-
 def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
     """
     Preprocess HSI to use as training data for dictionary.
@@ -227,7 +218,7 @@ def prep_hsi_for_dict_learning(hsi: HSI, N_train: int, mode: int):
         A 2D array of shape (:, N_train).
     """
     
-    Y = util.mode_n_unfold(hsi.get_norm_data(), n=mode)
+    Y = n_way_ops.mode_n_unfold(hsi.get_norm_data(), n=mode)
     if N_train >= Y.shape[1]:
         return Y
     else:

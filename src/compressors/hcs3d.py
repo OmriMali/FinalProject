@@ -3,8 +3,10 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from src.compressors.base_compressor import BaseCompressor
-from src.compressors.registry import register_compressor
-from src.math import regression_algs, n_way_ops, transforms, measurement_matrices
+from src.registry.compressors import register_compressor
+from src.registry.measurement_matrices import get_measurement
+from src.registry.transforms import get_transform
+from src.math import regression_algs, n_way_ops
 from src.core.hsi import HSI
 from src import util
 
@@ -58,8 +60,7 @@ class HCS3D(BaseCompressor):
         seeds = [np.random.randint(0, 1_000_000) for _ in range(len(shape))]
         Phis = []
         for i in range(len(shape)):
-            Phis.append(measurement_matrices.get_measurement_matrix(
-                    self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
+            Phis.append(get_measurement(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i]))
         if self.progress_callback:
             self.progress_callback(0.4)
 
@@ -113,8 +114,8 @@ class HCS3D(BaseCompressor):
         Psis_norm = []
         Ds = []
         for i in range(len(shape)):
-            Phi = measurement_matrices.get_measurement_matrix(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i])
-            Psi = transforms.get_transform(self.Psi_names[i], shape[i])
+            Phi = get_measurement(self.Phi_names[i], int(self.sr[i] * shape[i]), shape[i],seed=seeds[i])
+            Psi = get_transform(self.Psi_names[i], shape[i])
             D = Phi @ Psi
 
             col_norms = np.linalg.norm(D, axis=0)

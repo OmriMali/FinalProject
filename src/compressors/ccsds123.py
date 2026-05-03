@@ -4,7 +4,7 @@ from bitarray.util import int2ba, ba2int
 from dataclasses import dataclass
 
 from src.compressors.base_compressor import BaseCompressor
-from src.compressors.registry import register_compressor
+from src.registry.compressors import register_compressor
 from src.core.hsi import HSI
 
 

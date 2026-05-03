@@ -2,9 +2,11 @@ import numpy as np
 from dataclasses import dataclass
 
 from src.compressors.base_compressor import BaseCompressor
-from src.compressors.registry import register_compressor
+from src.registry.compressors import register_compressor
+from src.registry.measurement_matrices import get_measurement
+from src.registry.transforms import get_transform
 from src.core.hsi import HSI
-from src.math import regression_algs, n_way_ops, transforms, measurement_matrices
+from src.math import regression_algs, n_way_ops
 from src import util
 
 
@@ -64,8 +66,7 @@ class HCS1D(BaseCompressor):
         # 2. Generate Phi
         seed = np.random.randint(0, 1_000_000)
         p = int(self.sr * n)
-        Phi = measurement_matrices.get_measurement_matrix(
-             self.Phi_name, p, n, seed)
+        Phi = get_measurement(self.Phi_name, p, n, seed)
         if self.progress_callback:
             self.progress_callback(0.4)
 
@@ -118,8 +119,8 @@ class HCS1D(BaseCompressor):
         seed = metadata["seed"]
         n = hsi_rec_dict["shape"][self.axis]
         p = Y_shape[self.axis]
-        Phi = measurement_matrices.get_measurement_matrix(self.Phi_name, p, n, seed)
-        Psi = transforms.get_transform(self.Psi_name, n)
+        Phi = get_measurement(self.Phi_name, p, n, seed)
+        Psi = get_transform(self.Psi_name, n)
         D = Phi @ Psi
         col_norms = np.linalg.norm(D, axis=0)
         col_norms[col_norms == 0] = 1.0

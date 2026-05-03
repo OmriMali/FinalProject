@@ -39,24 +39,25 @@ def k_svd(Y, config: K_SVDConfig, progress_callback=None):
     Parameters   
     ----------
     Y : ndarray
-        Input signals to learn, arranged as column vectors of a 2D arra of shape (M, N)
-    K : int
-        Number of atoms in output dictionary.
-    T_0 : int
-        Target sparsity level for the input signals.
-    tol : float
-        Stopping threshold based on relative error of Y - DX.
-    max_iter : int
-        Stopping condition based on maximum iterations.
-    progress_callback : float, optional
-        Updates an external progress bar.
+        Input signals of shape (M, N)
+
+    config : K_SVDConfig
+        Configuration object containing:
+            K : number of dictionary atoms
+            T_0 : sparsity level
+            tol : stopping threshold
+            max_iter : maximum iterations
+
+    progress_callback : callable, optional
+        Function accepting float in [0,1] for progress updates.
 
     Returns
     -------
     D : ndarray
-        The dictionary which sparsly represent the input signals, of shape (M, K)
+        Dictionary of shape (M, K)
+
     X : ndarray
-        The coefficient vectors arragned in a matrix of size (K, N) satisfying Y~=DX. 
+        Sparse coefficients of shape (K, N)
     """
     # step 0: unpack config
     K = config.K

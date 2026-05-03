@@ -1,4 +1,6 @@
 import numpy as np
+from dataclasses import dataclass
+from typing import Tuple
 
 from src.compressors.base_compressor import BaseCompressor
 from src.compressors.registry import register_compressor
@@ -6,19 +8,39 @@ from src.math import regression_algs, n_way_ops, transforms, measurement_matrice
 from src.core.hsi import HSI
 from src import util
 
+@dataclass
+class HCS3DConfig:
+    """
+    Configuration for HCS3D compressor.
 
+    Parameters
+    ----------
+    K : int
+        Sparsity of the entire HSI.
+
+    sr : tuple of float (length 3)
+        Sampling ratio for each dimension (H, W, B).
+
+    Phi_names : tuple of str (length 3)
+        Measurement matrices for each dimension (H, W, B).
+
+    Psi_names : tuple of str (length 3)
+        Sparse basis for each dimension (H, W, B).
+    """
+    K: int = 4000
+    sr: Tuple[float, float, float] = (0.5, 0.5, 0.5)
+    Phi_names: Tuple[str, str, str] = ("SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING")
+    Psi_names: Tuple[str, str, str] = ("IDCT", "IDCT", "IDCT")
 
 @register_compressor("hcs3d")
 class HCS3D(BaseCompressor):
 
-    def __init__(self, K=3, sr=[0.5, 0.5, 1],
-                 Phi_names=["SUBSAMPLING", "SUBSAMPLING", "IDENTITY"],
-                 Psi_names=["IDCT", "IDCT", "IDCT"], progress_callback=None):
+    def __init__(self, config: HCS3DConfig, progress_callback=None):
         super().__init__(progress_callback)
-        self.K = K
-        self.sr = sr
-        self.Phi_names = Phi_names
-        self.Psi_names = Psi_names
+        self.K = config.K
+        self.sr = config.sr
+        self.Phi_names = config.Phi_names
+        self.Psi_names = config.Psi_names
 
     def compress(self, hsi: HSI):
         if self.progress_callback:

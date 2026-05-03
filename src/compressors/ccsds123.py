@@ -1,22 +1,57 @@
-from src.compressors.base_compressor import BaseCompressor
-from src.compressors.registry import register_compressor
-from src.core.hsi import HSI
 import numpy as np
 from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
+from dataclasses import dataclass
+
+from src.compressors.base_compressor import BaseCompressor
+from src.compressors.registry import register_compressor
+from src.core.hsi import HSI
+
+
+@dataclass
+class CCSDS123Config:
+    """
+    Configuration for CCSDS123 compressor.
+
+    Parameters
+    ----------
+    local_sum_mode : str
+        Mode for local sum, accepts: "column', 'neighbor'
+
+    P : int
+        Amount of spectral bands to use in predictor.
+
+    Omega : int
+        Resolution of calculation.
+    
+    a : int
+        Absolute error limit per pixel. At a=0 is lossless.
+
+    block size : int
+        Block size for encoder.
+
+    protected_bitstream: bool
+        Protect sensitive part of bitstream from BER.
+    """
+    local_sum_mode: str = 'column'
+    P: int = 2
+    Omega: int = 8
+    a: int = 0
+    block_size: int = 32
+    protected_bitstream: bool = False
+
 
 @register_compressor("ccsds123")
 class CCSDS123(BaseCompressor):
-
-    def __init__(self, local_sum_mode='column', P=1, Omega=8, a=0, block_size=32, protected_bitstream = False, progress_callback=None):
+    def __init__(self, config: CCSDS123Config, progress_callback=None):
 
         super().__init__(progress_callback=progress_callback)
-        self.local_sum_mode = local_sum_mode            # Mode for local sum
-        self.P = P                                      # Amount of spectral bands used in predictor
-        self.Omega = Omega                              # Resolution of calculation
-        self.a = a                                      # Absolute error limit (per pixel)
-        self.block_size = block_size                    # Block size for encoder
-        self.protected_bitstream = protected_bitstream
+        self.local_sum_mode = config.local_sum_mode            
+        self.P = config.P                                      
+        self.Omega = config.Omega                              
+        self.a = config.a                                      
+        self.block_size = config.block_size                    
+        self.protected_bitstream = config.protected_bitstream
         self._initialize_weights()    
     
     def _initialize_weights(self):

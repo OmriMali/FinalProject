@@ -1,4 +1,5 @@
 import numpy as np
+from dataclasses import dataclass
 
 from src.compressors.base_compressor import BaseCompressor
 from src.compressors.registry import register_compressor
@@ -7,6 +8,34 @@ from src.math import regression_algs, n_way_ops, transforms, measurement_matrice
 from src import util
 
 
+@dataclass
+class HCS1DConfig:
+    """
+    Configuration for HCS1D compressor.
+
+    Parameters
+    ----------
+    K : int
+        Sparsity for the provided axis.
+
+    sr : float
+        Sampling ratio for the provided axis.
+
+    axis: int
+        Axis to compress (H, W, B).
+    
+    Phi_name : sr
+        Measurement matrix name.
+
+    Psi_name : str
+        Sparse basis name.
+    """
+    K: int = 30
+    sr: float = 0.5
+    axis: int = 2
+    Phi_name: str = "SUBSAMPLING"
+    Psi_name: str = "IDCT"
+
 
 @register_compressor("hcs1d")
 class HCS1D(BaseCompressor):
@@ -14,14 +43,13 @@ class HCS1D(BaseCompressor):
     # Map axis to spatial\spectral
     AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
 
-    def __init__(self, K=3, sr=0.5, axis=2, Phi_name="SUBSAMPLING",
-                 Psi_name="IDCT", progress_callback=None):
+    def __init__(self, config: HCS1DConfig, progress_callback=None):
         super().__init__(progress_callback)
-        self.sr = sr
-        self.K = K
-        self.axis = axis
-        self.Phi_name = Phi_name
-        self.Psi_name = Psi_name
+        self.sr = config.sr
+        self.K = config.K
+        self.axis = config.axis
+        self.Phi_name = config.Phi_name
+        self.Psi_name = config.Psi_name
 
     def compress(self, hsi: HSI):
         if self.progress_callback:

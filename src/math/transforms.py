@@ -1,15 +1,9 @@
 import numpy as np
 import scipy as sp
 
-from src.core.registry import make_registry
+from src.registry.transforms import register_transform
 from src.io.loaders import load_array
 
-
-# ===== Registry ===== #
-
-TRANSFORMS, register_transform, get_transform, list_transforms = make_registry(configurable=True)
-
-# ===== Implementations ===== #
 
 @register_transform("IDENTITY")
 def identity_basis(n, **kwargs):
@@ -25,8 +19,9 @@ def idct_basis(n, **kwargs):
 
 @register_transform("LEARNED")
 def learned_basis(n, path=None, **kwargs):
+    
     if path is None:
-        raise ValueError("LEARNED transform requires 'path'")
+        raise ValueError("LEARNED transform requires path")
 
     D, _ = load_array(path)
 

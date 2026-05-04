@@ -59,29 +59,32 @@ def get_averaged_metric_series(csv_path, x_metric, y_metric, label, groupby_cols
         "label": label
     }
 
-def plot_multiple_series(series_list, x_label, y_label, connect_points=False):
-
+def plot_multiple_series(series_list, x_label, y_label, connect_points=False, show_error=True):
     plt.figure(figsize=(8, 4.5))
 
     legend_handles = []
     for s in series_list:
         color = COLOR_MAP.get(s["label"], "black")
+        
+        # Determine if we pass error bars or not
+        y_err_val = s.get("yerr") if show_error else None
 
         plt.errorbar(
             s["x"],
             s["y"],
-            xerr=s.get("xerr"),
-            yerr=s.get("yerr"),
-            fmt= '-o' if connect_points else 'o',          # marker style
-            capsize=3,        # little caps on error bars
-            color=color
+            yerr=y_err_val,
+            fmt= '-o' if connect_points else 'o',
+            capsize=3 if show_error else 0,
+            color=color,
+            # If show_error is False, the bars effectively disappear
+            elinewidth=1 if show_error else 0,
+            markeredgewidth=1 if show_error else 0
         )
 
-        # Create a clean dot-only legend handle
         handle = Line2D(
             [0], [0],
             marker='o',
-            linestyle='None',
+            linestyle='-' if connect_points else 'None',
             color=color,
             label=s["label"]
         )
@@ -91,10 +94,9 @@ def plot_multiple_series(series_list, x_label, y_label, connect_points=False):
     plt.ylabel(y_label)
     plt.title(f"{y_label} vs {x_label}")
     plt.legend(handles=legend_handles, loc="upper left")
-    plt.grid()
-
+    plt.grid(alpha=0.3)
     plt.show()
-
+    
 def fetch_recent(csv_path):
     """
     Returns most recent log row from csv_path as a dictionary.

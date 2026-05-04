@@ -73,40 +73,40 @@ import os
 # Load HSI
 hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\test\f060514t01p00r09_s11.npy")
 # Setup Compressor
-D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260501_102323.npz"
-# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
+# D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260501_102323.npz"
+# # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
 
 # compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-compressor = CCSDS123(P=2, a=400)
-# compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
+# # compressor = CCSDS123(P=2, a=400)
+# # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 
-# # Run   
-for sr in [0.1]:
-    ber = 0.00000
-    compressor.sr = sr
-    compressor.protected_bitstream = (ber > 0)
-    results = workflow.run_compression(hsi, compressor, ber=ber, save_bitstream=True, save_reconstruction=True)
+# # # Run   
+# for sr in [0.094]:
+#     ber = 0.00000
+#     compressor.sr = sr
+#     compressor.protected_bitstream = (ber > 0)
+#     results = workflow.run_compression(hsi, compressor, ber=ber, save_bitstream=True, save_reconstruction=True)
 
-# Visualize
-rec_hsi = results["reconstructed_hsi"]
-rgb, _, _ = hsi.get_rgb()
-rec_rgb, _, _ = rec_hsi.get_rgb()
+# # Visualize
+# rec_hsi = results["reconstructed_hsi"]
+# rgb, _, _ = hsi.get_rgb()
+# rec_rgb, _, _ = rec_hsi.get_rgb()
 
-plt.figure()
-plt.subplot(1, 2, 1)
-plt.imshow(rgb)
-plt.subplot(1,2,2)
-plt.imshow(rec_rgb)
-plt.show()
+# plt.figure()
+# plt.subplot(1, 2, 1)
+# plt.imshow(rgb)
+# plt.subplot(1,2,2)
+# plt.imshow(rec_rgb)
+# plt.show()
 
-row, col = np.array(hsi.shape[:2]) // 2
-plt.figure(figsize=(8, 4))
-plt.plot(hsi.wavelengths, hsi.data[row, col, :], 'k-', label='Original')
-plt.plot(hsi.wavelengths, rec_hsi.data[row, col, :], 'r--', label='Reconstructed')
-plt.title(f"Spectral Comparison at Pixel ({row}, {col})")
-plt.xlabel("Wavelength (nm)"); plt.ylabel("Intensity")
-plt.legend(); plt.grid(True, alpha=0.3)
-plt.show()
+# row, col = np.array(hsi.shape[:2]) // 2
+# plt.figure(figsize=(8, 4))
+# plt.plot(hsi.wavelengths, hsi.data[row, col, :], 'k-', label='Original')
+# plt.plot(hsi.wavelengths, rec_hsi.data[row, col, :], 'r--', label='Reconstructed')
+# plt.title(f"Spectral Comparison at Pixel ({row}, {col})")
+# plt.xlabel("Wavelength (nm)"); plt.ylabel("Intensity")
+# plt.legend(); plt.grid(True, alpha=0.3)
+# plt.show()
 
 
 # # Option C: run sweep compression
@@ -153,3 +153,45 @@ plt.show()
 #         workflow.run_compression(hsi, ccs, ber=0, save_bitstream=True, save_reconstruction=False)
 
 # print("\nBenchmark complete. 180 total runs logged with randomized scene selection.")
+
+
+
+# # 1. Setup paths to your result logs
+# hcs_csv = r"C:\Users\omrim\Documents\FinalProject\results\hcs1d\hcs1d_log.csv"
+# ccs_csv = r"C:\Users\omrim\Documents\FinalProject\results\ccsds123\ccsds123_log.csv"
+
+# # 2. Process HCS1D Data
+# # Grouping by 'samplingrate' to average the 10 iterations per point
+# hcs_rmse_series = data_processing.get_averaged_metric_series(
+#     csv_path=hcs_csv,
+#     x_metric="cr",
+#     y_metric="rmse",
+#     label="HCS1D",
+#     groupby_cols=["samplingrate"]
+# )
+
+# # 3. Process CCSDS123 Data
+# # Grouping by 'a' (error limit) to average the 10 iterations per point
+# ccs_rmse_series = data_processing.get_averaged_metric_series(
+#     csv_path=ccs_csv,
+#     x_metric="cr",
+#     y_metric="rmse",
+#     label="CCSDS123",
+#     groupby_cols=["a"]
+# )
+
+# # 4. Generate the Plot
+# # This will use the COLOR_MAP and error bar formatting from your module
+# data_processing.plot_multiple_series(
+#     series_list=[hcs_rmse_series, ccs_rmse_series],
+#     x_label="Compression Ratio (CR)",
+#     y_label="RMSE",
+#     connect_points=True,
+#     show_error = True
+# )
+
+# # Optional: Save the figure specifically for the poster
+# # plt.savefig("results/comparison_plots/rmse_vs_cr_poster.png", dpi=300, bbox_inches='tight')
+# plt.show()
+
+visuals.compare_hsis([{"hsi": hsi, "label": "s11", "RMSE": 20, "CR": 10, "Compression Time": 0.5}])

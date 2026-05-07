@@ -105,3 +105,27 @@ class HSI:
         int : Number of spectral bands.
         """
         return self.data.shape[2]
+
+
+
+@dataclass(frozen=True)
+class CompressedHSI:
+    """
+    Compressed hyperspectral image representation.
+
+    Parameters
+    ----------
+    bitstream : bytes
+        Encoded binary representation of the hyperspectral image.
+
+    metadata : HSIMetadata
+        Metadata required for reconstruction.
+
+    side_information : dict, optional
+        Additional compressor-specific information about the encoded
+        representation.
+    """
+    bitstream: bytes
+    metadata: HSIMetadata
+
+    side_information: dict = field(default_factory=dict)

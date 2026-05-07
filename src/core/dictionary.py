@@ -25,9 +25,14 @@ class Dictionary:
 
     axis : Axis
         Signal axis the dictionary was learned for.
+
+    name : str | None
+        Name for the dictionary. added post training.
     """
     data: np.ndarray
     axis: Axis
+
+    name: str | None = None
 
     def __post_init__(self):
         """

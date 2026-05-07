@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from src.core.hsi import HSI, CompressedHSI
 
+
+
 @dataclass(frozen=True)
 class CompressorConfig:
     pass

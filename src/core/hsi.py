@@ -29,8 +29,8 @@ class HSI:
     scene_name : str | None, optional
         Human-readable scene name.
 
-    section : int | None, optional
-        In case the hsi was divided to section, section number
+    section_idx : int | None, optional
+        In case the hsi was divided to sections, section number.
 
     metadata : dict, optional
         Additional dataset-specific metadata.
@@ -42,7 +42,7 @@ class HSI:
     sensor: str | None = None
     scene_id: str | None = None
     scene_name: str | None = None
-    section: int | None = None
+    section_idx: int | None = None
 
     metadata: dict = field(default_factory=dict)
 

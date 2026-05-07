@@ -2,8 +2,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from src.core.hsi import HSI, CompressedHSI
 
+@dataclass(frozen=True)
+class CompressorConfig:
+    pass
+
 class Compressor(ABC):
-    def __init__(self, config, progress_callback):
+    def __init__(self, config: CompressorConfig, progress_callback):
         self.config = config
         self.progress_callback = progress_callback
 
@@ -19,8 +23,3 @@ class Compressor(ABC):
     def update_progress(self, value):
         if self.progress_callback:
             self.progress_callback(value)
-
-
-@dataclass(frozen=True)
-class CompressorConfig:
-    pass

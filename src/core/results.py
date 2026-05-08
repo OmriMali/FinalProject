@@ -6,6 +6,29 @@ from src.core.dictionary import Dictionary
 from src.core.training_signals import TrainingSignals
 from src.metrics.base import MetricResult
 
+
+@dataclass(frozen=True)
+class RunMetadata:
+    """
+    Metadata describing an algorithm run.
+
+    Parameters
+    ----------
+    timestamp : str
+        Time when the run was created.
+
+    machine : str | None, optional
+        Identifier for the computer used for the run.
+
+    tags : dict, optional
+        Additional user-defined run tags.
+    """
+    timestamp: str
+    machine: str | None = None
+
+    tags: dict = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class CompressionRunResult:
     """
@@ -27,6 +50,9 @@ class CompressionRunResult:
         Reconstructed hyperspectral image obtained after
         decompression.
 
+    run_metadata : RunMetadata
+        Metadata describing the algorithm run.
+
     metrics : dict[str, MetricResult]
         Mapping of metric identifiers to computed metric
         results.
@@ -35,8 +61,9 @@ class CompressionRunResult:
     compressed: CompressedHSI
     reconstructed: HSI
 
-    metrics: dict[str, MetricResult] = field(default_factory=dict)
+    run_metadata: RunMetadata
 
+    metrics: dict[str, MetricResult] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -58,11 +85,17 @@ class DictionaryTrainingResult:
     dictionary : Dictionary
         Trained dictionary.
 
+    run_metadata : RunMetadata
+        Metadata describing the algorithm run.    
+    
     metrics : dict[str, MetricResult]
-        Mapping of metric identifiers to computed metric results.
+        Mapping of metric identifiers to computed metric results.    
     """
     signals: TrainingSignals
     coefficients: np.ndarray
     dictionary: Dictionary
 
-    metrics: dict[str, MetricResult]  = field(default_factory=dict)
+    run_metadata: RunMetadata
+
+    metrics: dict[str, MetricResult] = field(default_factory=dict)
+

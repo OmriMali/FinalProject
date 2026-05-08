@@ -2,6 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 
 from src.compressors.base import Compressor, CompressorConfig
+from src.compressors.registry import register_compressor
 from src.core.hsi import HSI, CompressedHSI
 from src.core.dictionary import Axis
 
@@ -10,7 +11,6 @@ from src.transforms.sparse_bases import get_sparse_base
 from src.math import regression_algs, n_way_ops, numeric
 from src.io import bitstream
 
-from src.compressors.registry import register_compressor
 
 
 @dataclass(frozen=True)

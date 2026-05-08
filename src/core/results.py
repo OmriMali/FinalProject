@@ -1,3 +1,4 @@
+import numpy as np
 from dataclasses import dataclass
 
 from src.core.hsi import HSI, CompressedHSI
@@ -43,13 +44,16 @@ class DictionaryTrainingResult:
     """
     Complete result of a dictionary training run.
 
-    Stores the training signals, the trained dictionary,
-    and all evaluated metrics for the run.
+    Stores the training signals and their coefficients,
+    the trained dictionary and all evaluated metrics for the run.
 
     Parameters
     ----------
     signals : TrainingSignals
         Signals used for dictionary training.
+
+    coefficients : np.ndarray
+        Signals representation in the dictionary domain.
 
     dictionary : Dictionary
         Trained dictionary.
@@ -58,6 +62,7 @@ class DictionaryTrainingResult:
         Mapping of metric identifiers to computed metric results.
     """
     signals: TrainingSignals
+    coefficients: np.ndarray
     dictionary: Dictionary
 
     metrics: dict[str, MetricResult]

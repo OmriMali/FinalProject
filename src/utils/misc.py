@@ -4,38 +4,7 @@ from bitarray import bitarray
 from bitarray.util import int2ba, ba2int
 import random
 
-##### Bitstream Packing #####
-
-def pack_to_bit_depth(data, bit_depth):
-    """
-    Packs a numpy array into a bitstream where each element 
-    occupies exactly 'bit_depth' bits.
-    """
-    ba = bitarray()
-    flat_data = data.flatten().tolist()
-    
-    for value in flat_data:
-        # Convert integer to bitarray of length bit_depth
-        ba.extend(int2ba(int(value), length=bit_depth, endian='big'))
-    
-    return ba.tobytes()
-
-def unpack_from_bit_depth(byte_stream, bit_depth, shape):
-    """
-    Unpacks a byte-stream back into a numpy array of a specific shape.
-    """
-    ba = bitarray()
-    ba.frombytes(byte_stream)
-    
-    total_elements = np.prod(shape)
-    unpacked = np.zeros(total_elements, dtype=np.uint64)
-    
-    for i in range(total_elements):
-        start = i * bit_depth
-        end = start + bit_depth
-        unpacked[i] = ba2int(ba[start:end])
-        
-    return unpacked.reshape(shape)
+##### Bitstream noise #####
 
 def add_bit_noise(data_bytes, ber, protected_mask=None):
     """

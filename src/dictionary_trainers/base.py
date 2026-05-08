@@ -18,7 +18,6 @@ class DictionaryTrainer(ABC):
     """
     Base interface for dictionary trainers.
     """
-
     name: str
     Config = DictionaryTrainerConfig
 

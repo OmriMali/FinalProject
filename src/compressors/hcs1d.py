@@ -153,6 +153,3 @@ class HCS1D(Compressor):
 
         return reconstruction
 
-
-        
-

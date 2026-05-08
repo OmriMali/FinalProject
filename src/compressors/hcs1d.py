@@ -1,17 +1,20 @@
 import numpy as np
 from dataclasses import dataclass
 
-from src.compressors.base_compressor import BaseCompressor
-from src.registry.compressors import register_compressor
-from src.registry.measurement_matrices import get_measurement
-from src.registry.transforms import get_transform
-from src.core.hsi import HSI
-from src.math import regression_algs, n_way_ops
-from src import util
+from src.compressors.base import Compressor, CompressorConfig
+from src.core.hsi import HSI, CompressedHSI
+from src.core.dictionary import Axis
+
+from src.transforms.measurements import get_measurement
+from src.transforms.sparse_bases import get_sparse_base
+from src.math import regression_algs, n_way_ops, numeric
+from src.io import bitstream
+
+from src.compressors.registry import register_compressor
 
 
-@dataclass
-class HCS1DConfig:
+@dataclass(frozen=True)
+class HCS1DConfig(CompressorConfig):
     """
     Configuration for HCS1D compressor.
 
@@ -23,138 +26,132 @@ class HCS1DConfig:
     sr : float
         Sampling ratio for the provided axis.
 
-    axis: int
-        Axis to compress (H, W, B).
+    axis: Axis
+        Axis to compress.
     
-    Phi_name : str
+    Phi : str
         Measurement matrix name.
 
-    Psi_name : str
+    Psi : str
         Sparse basis name.
     """
     K: int = 30
     sr: float = 0.5
-    axis: int = 2
-    Phi_name: str = "SUBSAMPLING"
-    Psi_name: str = "IDCT"
+    axis: Axis = Axis.SPECTRAL
+    Phi: str = "SUBSAMPLING"
+    Psi: str = "IDCT"
 
-
-@register_compressor("hcs1d")
-class HCS1D(BaseCompressor):
-
+@register_compressor
+class HCS1D(Compressor):
+    """
+    1D compressed sensing based hyperspectral image compressor.
+    """
+    name = "hcs1d"
     Config = HCS1DConfig
     
-    AXIS_MAP = ["Vertical", "Horizontal", "Spectral"]
-
     def __init__(self, config: HCS1DConfig, progress_callback=None):
-        super().__init__(progress_callback)
-        
-        self.config = config
-        self.__dict__.update(config.__dict__)
+        super().__init__(config, progress_callback)
 
 
-    def compress(self, hsi: HSI):
-        if self.progress_callback:
-                    self.progress_callback(0.0)
+    def compress(self, hsi: HSI) -> CompressedHSI:
+        self.report_progress(0.0)
 
-        # 1. Extract data cube
-        cube = hsi.get_norm_data()
-        n = hsi.shape[self.axis]
-        if self.progress_callback:
-            self.progress_callback(0.2)
+        # 1. Extract data
+        y, hsi_min, hsi_max = numeric.normalize(hsi.data)
+        self.report_progress(0.1)
 
-        # 2. Generate Phi
+        # 2. Generate measurement matrix
+        n = hsi.shape[self.config.axis.value]
+        p = int(self.config.sr * n)
         seed = np.random.randint(0, 1_000_000)
-        p = int(self.sr * n)
-        Phi = get_measurement(self.Phi_name, p, n, seed)
-        if self.progress_callback:
-            self.progress_callback(0.4)
+        Phi = get_measurement(self.config.Phi, p, n, seed)
+        self.report_progress(0.2)
 
-        # 3. Get Measurements
-        Y = cube.copy()
-        Y = n_way_ops.mode_n_product(Y, Phi, self.axis)
-        if self.progress_callback:
-            self.progress_callback(0.8)
+        # 3. Get hsi measurements
+        y = n_way_ops.mode_n_product(y, Phi, self.config.axis.value)
+        self.report_progress(0.5)
 
-        # 4. Quantization & Bit Packing
-        max_int = (1 << hsi.bitdepth) - 1
-        Y_max = np.max(np.abs(Y))
-        Y_quantized = np.clip(np.round((Y + Y_max) / 2 * max_int).astype(np.uint64), 0, max_int)
-        bitstream = util.pack_to_bit_depth(Y_quantized, hsi.bitdepth)
-        if self.progress_callback:
-            self.progress_callback(1.0)
+        # 4. Quantization
+        quantized, y_max = numeric.quantize_symmetric(y, hsi.metadata.bit_depth)
+        self.report_progress(0.6)
 
-        metadata = {
-            "Y_shape": Y.shape,
-            "Y_max": Y_max,
-            "hsi_rec_dict": hsi.to_dict(),
-            "seed": seed,
-            "params": {
-                "sparsity": self.K,
-                "sampling rate": self.sr,
-                "transform": self.Psi_name,
-                "measurement matrix": self.Phi_name,
-                "compression axis": self.AXIS_MAP[self.axis]
+        # 5. Pack to bitstream
+        stream = bitstream.pack_to_bit_depth(quantized, hsi.metadata.bit_depth)
+        self.report_progress(0.95)
+
+        # 6. Create output object
+        compressed = CompressedHSI(
+            bitstream=stream,
+            metadata=hsi.metadata,
+            side_information= {
+                "hsi_min": hsi_min,
+                "hsi_max": hsi_max,
+                "y_shape": y.shape,
+                "y_max": y_max,
+                "seed": seed
             }
-        }
-        return bitstream, metadata
-    
-    def decompress(self, bitstream, metadata):
-        if self.progress_callback:
-            self.progress_callback(0.0)
-
-        # 1. Unpack & Dequantize
-        hsi_rec_dict = metadata["hsi_rec_dict"]
-        Y_shape = metadata["Y_shape"]
-        Y_max = metadata["Y_max"]
+        )
+        self.report_progress(1.0)
+        
+        return compressed
 
 
-        Y_quantized = util.unpack_from_bit_depth(bitstream, hsi_rec_dict["bitdepth"], Y_shape)
-        max_int = (1 << hsi_rec_dict["bitdepth"]) - 1
-        Y = (Y_quantized.astype(np.float64) / max_int) * 2 - Y_max
-        if self.progress_callback:
-            self.progress_callback(0.05)
+    def decompress(self, compressed: CompressedHSI) -> HSI:
+        self.report_progress(0.0)
+        
+        # 1. Unpack bitstream
+        quantized = bitstream.unpack_from_bit_depth(compressed.bitstream,
+                                                    compressed.metadata.bit_depth,
+                                                    compressed.side_information["y_shape"])
+        self.report_progress(0.04)
 
-        # 2. Setup recovery
-        seed = metadata["seed"]
-        n = hsi_rec_dict["shape"][self.axis]
-        p = Y_shape[self.axis]
-        Phi = get_measurement(self.Phi_name, p, n, seed)
-        Psi = get_transform(self.Psi_name, n)
+        # 2. Dequantization
+        y = numeric.dequantize_symmetric(quantized,
+                                         compressed.metadata.bit_depth,
+                                         compressed.side_information["y_max"])
+        self.report_progress(0.05)
+
+        # 3. Get measurement and sparse basis matrices
+        n = compressed.metadata.shape[self.config.axis.value]
+        p = compressed.side_information["y_shape"][self.config.axis.value]
+        Phi = get_measurement(self.config.Phi, p, n, compressed.side_information["seed"])
+        Psi = get_sparse_base(self.config.Psi, n)
+        self.report_progress(0.06)
+
+        # 4. Create normalized dictionary
         D = Phi @ Psi
         col_norms = np.linalg.norm(D, axis=0)
         col_norms[col_norms == 0] = 1.0
         S_inv = np.diag(1.0 / col_norms)
         D = D @ S_inv
         Psi_norm = Psi @ S_inv
-        if self.progress_callback:
-            self.progress_callback(0.1)
+        self.report_progress(0.1)
 
-         # 3. Run recovery algorithm
-        Y_unfolded = n_way_ops.mode_n_unfold(Y, self.axis)
-        num_pixels = Y_unfolded.shape[1]
-        X_unfolded = np.zeros((D.shape[1], num_pixels))
-
+        # 5. Run sparse recovery algorithm
+        y_unfolded = n_way_ops.mode_n_unfold(y, self.config.axis.value)
+        num_pixels = y_unfolded.shape[1]
+        x_unfolded = np.zeros((D.shape[1], num_pixels))
         for i in range(num_pixels):
-            x_rec = regression_algs.omp(D, Y_unfolded[:, i], self.K, tol=1e-2)
-            X_unfolded[:, i] = x_rec
-            if self.progress_callback and i % 100 == 0:
-                self.progress_callback(i / num_pixels)
-        
-        # 4. Recover the hsi
-        pixel_shape = list(hsi_rec_dict["shape"])
-        pixel_shape[self.axis] = D.shape[1]
-        X = n_way_ops.mode_n_fold(X_unfolded, self.axis, pixel_shape)
-        Z = n_way_ops.mode_n_product(X, Psi_norm, self.axis)
+            x_unfolded[:, i] = regression_algs.omp(D, y_unfolded[:, i], self.config.K, tol=1e-2)
+            if i % 100 == 0:
+                self.report_progress(0.1 + 0.85*(i / num_pixels))
+        self.report_progress(0.95)
 
-        hsi_rec = HSI.from_normalized(Z, hsi_rec_dict)
-        if self.progress_callback:
-            self.progress_callback(1.0)
+        # 6. Get reconstruction via inverse transform
+        pixel_shape = list(compressed.metadata.shape)
+        pixel_shape[self.config.axis.value] = D.shape[1]
+        x = n_way_ops.mode_n_fold(x_unfolded, self.config.axis.value, pixel_shape)
+        z = n_way_ops.mode_n_product(x, Psi_norm, self.config.axis.value)
+        z = numeric.denormalize(z,
+                                compressed.side_information["hsi_min"],
+                                compressed.side_information["hsi_max"])
+        self.report_progress(0.99)
 
-        return hsi_rec
-    
+        # 7. Create output object
+        reconstruction = HSI(z, compressed.metadata)
+        self.report_progress(1.0)
 
-        
+        return reconstruction
 
 
         

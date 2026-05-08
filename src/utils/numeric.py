@@ -62,7 +62,7 @@ def denormalize(a: np.ndarray, amin: float, amax: float) -> np.ndarray:
     return a * (amax - amin) + amin
 
 
-def quantize_symmetric(a: np.ndarray, bit_depth: int) -> tuple[np.ndarray, float]
+def quantize_symmetric(a: np.ndarray, bit_depth: int) -> tuple[np.ndarray, float]:
     """
     Quantize an array using a symmetric range around zero.
 

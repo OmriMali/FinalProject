@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.core.hsi import HSI, CompressedHSI
 from src.core.dictionary import Dictionary
@@ -35,7 +35,7 @@ class CompressionRunResult:
     compressed: CompressedHSI
     reconstructed: HSI
 
-    metrics: dict[str, MetricResult]
+    metrics: dict[str, MetricResult] = field(default_factory=dict)
 
 
 
@@ -65,4 +65,4 @@ class DictionaryTrainingResult:
     coefficients: np.ndarray
     dictionary: Dictionary
 
-    metrics: dict[str, MetricResult]
+    metrics: dict[str, MetricResult]  = field(default_factory=dict)

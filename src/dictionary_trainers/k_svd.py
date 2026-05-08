@@ -64,7 +64,7 @@ class K_SVD(DictionaryTrainer):
             raise ValueError("Number of training signals must be at least K")
 
 
-    def fit(self, signals: TrainingSignals) -> Dictionary:
+    def fit(self, signals: TrainingSignals):
         """
         Train a dictionary on input signals.
 
@@ -154,4 +154,4 @@ class K_SVD(DictionaryTrainer):
         dictionary = Dictionary(D, signals.axis, name=self.name)
         self.report_progress(1.0)
 
-        return dictionary
+        return dictionary, X

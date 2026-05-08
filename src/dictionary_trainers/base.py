@@ -1,6 +1,7 @@
+import numpy as np
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Tuple
 
 from src.core.dictionary import Dictionary
 from src.core.training_signals import TrainingSignals
@@ -26,7 +27,7 @@ class DictionaryTrainer(ABC):
         self._progress_callback = progress_callback
 
     @abstractmethod
-    def fit(self, signals: TrainingSignals) -> Dictionary:
+    def fit(self, signals: TrainingSignals) -> Tuple[Dictionary, np.ndarray]:
         """
         Train a dictionary on input signals.
 

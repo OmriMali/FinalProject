@@ -4,6 +4,7 @@ from src.metrics.base import Metric, MetricResult
 from src.metrics.registry import register_metric
 from src.core.results import CompressionRunResult
 
+
 @register_metric
 class RMSE(Metric):
     """

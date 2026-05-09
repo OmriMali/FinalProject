@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 from typing import Callable, Dict
 
-from src.io.loaders import load_array
+from src.io.dictionary import load_dictionary
 
 
 
@@ -64,7 +64,8 @@ def learned_basis(n, path=None, **kwargs):
     if path is None:
         raise ValueError("LEARNED transform requires path")
 
-    D, _ = load_array(path)
+    dictionary = load_dictionary(path)
+    D = dictionary.data
 
     if n != D.shape[0]:
         raise ValueError(f"Signal length {n} does not match dictionary signals of length {D.shape[0]}")

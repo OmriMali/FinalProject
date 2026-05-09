@@ -10,7 +10,7 @@ class RepresentationError(Metric):
     """
     Representation Error.
     """
-    name = "representation error"
+    name = "Representation Error"
     short_name = "REP_ERR"
     unit = "%"
 
@@ -42,7 +42,7 @@ class MeanSparsity(Metric):
     """
     Mean sparsity of sparse coefficient vectors.
     """
-    name = "mean sparsity"
+    name = "Mean Sparsity"
     short_name = "MEAN_K"
     unit = None
 
@@ -83,7 +83,7 @@ class DictionaryCoherence(Metric):
     """
     Mutual coherence of dictionary atoms.
     """
-    name = "dictionary coherence"
+    name = "Dictionary Coherence"
     short_name = "MU"
     unit = None
 

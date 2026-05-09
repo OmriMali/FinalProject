@@ -66,12 +66,12 @@ class Runner:
             for metric in metrics
         }
 
-        computed_metrics["COMP_TIME"] = MetricResult(name="compression time",
+        computed_metrics["COMP_TIME"] = MetricResult(name="Compression Time",
                                                      short_name="COMP_TIME",
                                                      value=float(compression_time),
                                                      unit="s")
         
-        computed_metrics["DECOMP_TIME"] = MetricResult(name="decompression time",
+        computed_metrics["DECOMP_TIME"] = MetricResult(name="Decompression Time",
                                                         short_name="DECOMP_TIME",
                                                         value=float(decompression_time),
                                                         unit="s")
@@ -81,7 +81,6 @@ class Runner:
         return result
 
 
-    
     def run_dictionary_training(self,
                                 signals: TrainingSignals,
                                 trainer: DictionaryTrainer,
@@ -130,7 +129,7 @@ class Runner:
             for metric in metrics
         }
 
-        computed_metrics["TRAIN_TIME"] = MetricResult(name="training time",
+        computed_metrics["TRAIN_TIME"] = MetricResult(name="Training Time",
                                                      short_name="TRAIN_TIME",
                                                      value=float(training_time),
                                                      unit="s")
@@ -139,3 +138,4 @@ class Runner:
 
         return result
         
+

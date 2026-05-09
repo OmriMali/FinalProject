@@ -127,7 +127,7 @@ class CompressionRate(Metric):
     """
     Compression rate metric.
     """
-    name = "compression rate"
+    name = "Compression Rate"
     short_name = "CR"
     unit = None
 

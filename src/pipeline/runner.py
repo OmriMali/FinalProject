@@ -85,6 +85,57 @@ class Runner:
     def run_dictionary_training(self,
                                 signals: TrainingSignals,
                                 trainer: DictionaryTrainer,
-                                metrics: list[Metric]
+                                metrics: list[Metric],
+                                tags: dict | None = None,
                                 ) -> DictionaryTrainingResult:
-        pass
+        """
+        Run a dictionary training experiment.
+
+        Parameters
+        ----------
+        signals : TrainingSignals
+            Training signals for the dictionary.
+
+        trainer : DictionaryTrainer
+            Trainer used to the experiment.
+
+        metrics : list[Metric]
+            Metrics to compute after dictionary created.
+
+        tags : dict | None, optional
+            Additional user-defined run tags.
+
+        Returns
+        -------
+        DictionaryTrainingResult
+            Complete dictionary training result.
+        """
+        run_metadata = RunMetadata(
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        machine=gethostname(),
+        tags=tags or {}
+        )
+
+        start = perf_counter()
+        dictionary, coefficients = trainer.fit(signals)
+        training_time = perf_counter() - start
+
+        partial = DictionaryTrainingResult(signals,
+                                           coefficients,
+                                           dictionary,
+                                           run_metadata,)
+        
+        computed_metrics = {
+            metric.short_name: metric.compute(partial)
+            for metric in metrics
+        }
+
+        computed_metrics["TRAIN_TIME"] = MetricResult(name="training time",
+                                                     short_name="TRAIN_TIME",
+                                                     value=float(training_time),
+                                                     unit="s")
+        
+        result = replace(partial, metrics=computed_metrics)
+
+        return result
+        

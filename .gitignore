@@ -1,12 +1,13 @@
-# --- HSI Data ---
-# Exclude the actual datasets (adjust extensions as needed)
-*.mat
-*.npy
-*.hdr
-*.img
+# --- Data ------
 data/
-raw_data/
 raw/
+results/*
+!results/dictionaries/
+
+# --- additionals ---
+main.py
+design_review.md
+
 
 # --- Python Environment ---
 __pycache__/
@@ -24,6 +25,3 @@ env/
 Thumbs.db
 
 # --- Logs and Results ---
-logs/
-results/*
-!results/dictionaries/

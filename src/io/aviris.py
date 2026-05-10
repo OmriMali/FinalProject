@@ -1,216 +1,355 @@
-import numpy as np
-import os
-import tarfile
 import math
-import random
+import os
+import re
 
-from src.core.hsi import HSI
-from src.io.savers import save_hsi
+import numpy as np
+
+from src.core.hsi import HSI, HSIMetadata
 
 
-def extract_tar_gz(path, out_dir):
+def load_aviris_folder(folder_path: str) -> HSI:
     """
-    Extract a .tar.gz dataset from path to out_dir.
-    """
-    with tarfile.open(path, "r:gz") as tar:
-        tar.extractall(out_dir)
+    Load an AVIRIS folder into an HSI object.
 
-def load_aviris(folder_path: str) -> HSI:
+    The loader reads the orthorectified AVIRIS image file, parses
+    the matching ENVI header, loads wavelengths from the SPC file,
+    removes known water absorption bands, and returns the data in
+    framework format ``(height, width, bands)``.
+
+    Parameters
+    ----------
+    folder_path : str
+        Path to AVIRIS scene folder.
+
+    Returns
+    -------
+    HSI
+        Loaded hyperspectral image.
     """
-    Load a raw AVIRIS dataset as an HSI object.
-    """
+
     folder_path = os.path.abspath(folder_path)
     files = os.listdir(folder_path)
 
-    # ===== Detect ort_img files ===== #
-    img_files = [f for f in files if "ort_img" in f.lower() and not f.lower().endswith(".hdr")]
-    hdr_files = [f for f in files if f.lower().endswith(".hdr")]
-    spc_files = [f for f in files if f.lower().endswith(".spc")]
-    info_files = [f for f in files if f.lower().endswith(".info")]
+    img_files = [
+        f for f in files
+        if "ort_img" in f.lower()
+        and not f.lower().endswith(".hdr")
+    ]
+
+    hdr_files = [
+        f for f in files
+        if f.lower().endswith(".hdr")
+    ]
+
+    spc_files = [
+        f for f in files
+        if f.lower().endswith(".spc")
+    ]
+
+    info_files = [
+        f for f in files
+        if f.lower().endswith(".info")
+    ]
 
     if not img_files:
         raise FileNotFoundError("No ort_img image file found")
 
     if len(img_files) > 1:
-        print(f"[WARNING] Multiple ort_img files found ({len(img_files)}). Using first.")
+        print(
+            f"[WARNING] Multiple ort_img files found "
+            f"({len(img_files)}). Using first."
+        )
 
     img_file = img_files[0]
     img_path = os.path.join(folder_path, img_file)
 
-    # ===== Find matching HDR ===== #
     base_name = os.path.splitext(img_file)[0]
-    hdr_candidates = [f for f in hdr_files if base_name in f]
+
+    hdr_candidates = [
+        f for f in hdr_files
+        if base_name in f
+    ]
+
     if not hdr_candidates:
         raise FileNotFoundError("No matching HDR file found")
+
     hdr_file = hdr_candidates[0]
     hdr_path = os.path.join(folder_path, hdr_file)
 
-    # ===== Parse HDR ===== #
-    header = {}
-    with open(hdr_path, "r") as f:
-        for line in f:
-            if "=" in line:
-                key, val = line.split("=", 1)
-                header[key.strip().lower()] = val.strip().lower()
+    header = _parse_envi_header(hdr_path)
 
     samples = int(header["samples"])
     lines = int(header["lines"])
     bands = int(header["bands"])
-    interleave = header.get("interleave", "bip")
+
+    interleave = header.get("interleave", "bip").lower()
     data_type = int(header.get("data type", 2))
     byte_order = int(header.get("byte order", 1))
 
-    # ===== Map dtype ===== #
+    dtype = _envi_dtype(data_type, byte_order)
+
+    raw = np.fromfile(img_path, dtype=dtype)
+
+    expected = samples * lines * bands
+
+    if raw.size != expected:
+        raise ValueError(
+            f"Size mismatch: got {raw.size}, expected {expected}"
+        )
+
+    cube = _reshape_envi_cube(
+        raw,
+        lines=lines,
+        samples=samples,
+        bands=bands,
+        interleave=interleave,
+    )
+
+    wavelengths = _load_aviris_wavelengths(
+        folder_path,
+        spc_files,
+        bands,
+    )
+
+    scene_id = _extract_scene_id(img_file)
+    site_name = _load_site_name(folder_path, info_files)
+    bit_depth = _compute_effective_bit_depth(cube)
+
+    metadata = HSIMetadata(
+        shape=cube.shape,
+        wavelengths=wavelengths,
+        bit_depth=bit_depth,
+        sensor="AVIRIS",
+        scene_id=scene_id,
+        scene_name=site_name,
+        attributes={
+            "raw_folder": folder_path,
+        },
+    )
+    return HSI(
+        data=cube,
+        metadata=metadata,
+    )
+
+
+def _parse_envi_header(path: str) -> dict:
+    """
+    Parse a simple ENVI header file.
+
+    Parameters
+    ----------
+    path : str
+        Header file path.
+
+    Returns
+    -------
+    dict
+        Parsed header key-value pairs.
+    """
+
+    header = {}
+
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if "=" in line:
+                key, value = line.split("=", 1)
+                header[key.strip().lower()] = value.strip().lower()
+
+    return header
+
+def _envi_dtype(data_type: int, byte_order: int) -> np.dtype:
+    """
+    Convert ENVI data type and byte order to NumPy dtype.
+
+    Parameters
+    ----------
+    data_type : int
+        ENVI data type code.
+
+    byte_order : int
+        ENVI byte order. ``1`` means big endian, ``0`` means little endian.
+
+    Returns
+    -------
+    np.dtype
+        NumPy dtype.
+    """
+
     if data_type == 2:
         base_dtype = np.int16
     elif data_type == 4:
         base_dtype = np.float32
+    elif data_type == 12:
+        base_dtype = np.uint16
     else:
         raise ValueError(f"Unsupported ENVI data type: {data_type}")
 
-    dtype = np.dtype(base_dtype).newbyteorder(">" if byte_order == 1 else "<")
+    endian = ">" if byte_order == 1 else "<"
 
-    # ===== Load raw data ===== #
-    cube = np.fromfile(img_path, dtype=dtype)
-    expected = samples * lines * bands
-    if cube.size != expected:
-        raise ValueError(f"Size mismatch: got {cube.size}, expected {expected}")
+    return np.dtype(base_dtype).newbyteorder(endian)
 
-    # ===== Reshape based on interleave ===== #
+def _reshape_envi_cube(
+    raw: np.ndarray,
+    lines: int,
+    samples: int,
+    bands: int,
+    interleave: str,
+) -> np.ndarray:
+    """
+    Reshape raw ENVI data to ``(lines, samples, bands)``.
+
+    Parameters
+    ----------
+    raw : np.ndarray
+        Flat raw data array.
+
+    lines : int
+        Number of image lines.
+
+    samples : int
+        Number of image samples.
+
+    bands : int
+        Number of spectral bands.
+
+    interleave : str
+        ENVI interleave type: ``bip``, ``bil``, or ``bsq``.
+
+    Returns
+    -------
+    np.ndarray
+        Hyperspectral cube with shape ``(lines, samples, bands)``.
+    """
+
     if interleave == "bip":
-        cube = cube.reshape((lines, samples, bands))
-    elif interleave == "bil":
-        cube = cube.reshape((lines, bands, samples))
-        cube = np.transpose(cube, (0, 2, 1))
-    elif interleave == "bsq":
-        cube = cube.reshape((bands, lines, samples))
-        cube = np.transpose(cube, (1, 2, 0))
-    else:
-        raise ValueError(f"Unknown interleave: {interleave}")
+        return raw.reshape((lines, samples, bands))
 
-    # ===== Load wavelengths ===== #
-    if spc_files:
-        spc_path = os.path.join(folder_path, spc_files[0])
-        wavelengths = np.loadtxt(spc_path, usecols=0)
-    else:
+    if interleave == "bil":
+        cube = raw.reshape((lines, bands, samples))
+        return np.transpose(cube, (0, 2, 1))
+
+    if interleave == "bsq":
+        cube = raw.reshape((bands, lines, samples))
+        return np.transpose(cube, (1, 2, 0))
+
+    raise ValueError(f"Unknown interleave: {interleave}")
+
+def _load_aviris_wavelengths(
+    folder_path: str,
+    spc_files: list[str],
+    bands: int,
+) -> np.ndarray:
+    """
+    Load AVIRIS wavelengths from an SPC file.
+
+    Parameters
+    ----------
+    folder_path : str
+        AVIRIS folder path.
+
+    spc_files : list[str]
+        Available SPC files.
+
+    bands : int
+        Number of spectral bands.
+
+    Returns
+    -------
+    np.ndarray
+        Wavelength vector.
+    """
+
+    if not spc_files:
         print("[WARNING] No SPC file found, using index wavelengths")
-        wavelengths = np.arange(bands)
+        return np.arange(bands)
 
-    # ===== Remove water absorption bands ===== #
-    mask = np.ones(len(wavelengths), dtype=bool)
-    bad_bands = [(104, 108), (150, 163)]
+    spc_path = os.path.join(folder_path, spc_files[0])
 
-    # Update the mask to False for those specific indices
-    for start, end in bad_bands:
-        # end+1 because Python slicing is exclusive at the stop index
-        mask[start:end+1] = False 
+    return np.loadtxt(spc_path, usecols=0)
 
-    # Apply the mask to the cube and wavelengths
-    cube = cube[:, :, mask]
-    wavelengths = wavelengths[mask]
-    
-    # ===== Parse .info file for site ===== #
-    site_name = "Unknown"
-    if info_files:
-        info_path = os.path.join(folder_path, info_files[0])
-        with open(info_path, "r") as f:
-            for line in f:
-                if "site_name" in line:
-                    _, val = line.split("=", 1)
-                    site_name = val.strip()
-
-    # ===== Extract dataset name from folder ===== #
-    img_base = os.path.basename(img_path)
-    if "rdn" in img_base:
-        name = img_base.split("rdn")[0]
-    elif "_" in img_base:
-        name = img_base.split("_")[0]
-    else:
-        name = img_base
-
-    # ===== Create HSI object ===== #
-    hsi = HSI(
-        data=cube,
-        wavelengths=wavelengths,
-        dtype=base_dtype,
-        metadata={
-            "name": name,
-            "site": site_name,
-            "sensor": "AVIRIS"
-        }
-    )
-
-    return hsi
-
-
-def crop_aviris_scene(folder_path: str, section_size=(256, 256), train_ratio=0.8, seed=42):
+def _load_site_name(
+    folder_path: str,
+    info_files: list[str],
+) -> str:
     """
-    Crop a full AVIRIS HSI scene into smaller sections and save them.
-    Splits into train and test subfolders and filters black patches.
+    Load AVIRIS site name from an info file if available.
+
+    Parameters
+    ----------
+    folder_path : str
+        AVIRIS folder path.
+
+    info_files : list[str]
+        Available info files.
+
+    Returns
+    -------
+    str
+        Site name.
     """
-    # ===== Load full scene ===== #
-    hsi = load_aviris(folder_path)
-    scene_name = hsi.metadata["name"]
 
-    # ===== Prepare output folder ===== #
-    base_folder = os.path.join(folder_path, "sections")
-    # Added train/test subfolders
-    train_folder = os.path.join(base_folder, "train")
-    test_folder = os.path.join(base_folder, "test")
-    os.makedirs(train_folder, exist_ok=True)
-    os.makedirs(test_folder, exist_ok=True)
+    if not info_files:
+        return "Unknown"
 
-    H, W = hsi.height, hsi.width
-    sh, sw = section_size
+    info_path = os.path.join(folder_path, info_files[0])
 
-    # ===== Compute number of sections ===== #
-    n_vert = math.ceil(H / sh)
-    n_horiz = math.ceil(W / sw)
+    with open(info_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if "site_name" in line:
+                _, value = line.split("=", 1)
+                return value.strip()
 
-    coords = []
-    for i in range(n_vert):
-        y0 = i * sh
-        y1 = min(y0 + sh, H)
-        for j in range(n_horiz):
-            x0 = j * sw
-            x1 = min(x0 + sw, W)
-            coords.append((y0, y1, x0, x1))
+    return "Unknown"
 
-    # ===== Shuffle and Filter ===== #
-    random.seed(seed)
-    random.shuffle(coords) # Shuffling for randomized train/test split
+def _extract_scene_id(filename: str) -> str:
+    """
+    Extract AVIRIS scene id from a filename.
 
-    print(f"Cropping HSI ({H}x{W}) into sections of approx {sh}x{sw}...")
+    Parameters
+    ----------
+    filename : str
+        AVIRIS filename.
 
-    # ===== Crop, update metadata, save ===== #
-    # Filter black patches and split during save loop
-    valid_count = 0
-    for y0, y1, x0, x1 in coords:
-        section_hsi = hsi.crop((y0, y1), (x0, x1))
-        
-        # Filter: Skip sections with zero dynamic range (black patches)
-        if np.max(section_hsi.data) <= np.min(section_hsi.data):
-            continue
-            
-        valid_count += 1
-        is_train = valid_count <= (len(coords) * train_ratio)
-        target_dir = train_folder if is_train else test_folder
-        label = "train" if is_train else "test"
+    Returns
+    -------
+    str
+        Scene identifier.
+    """
 
-        # Update metadata with section number
-        section_name = f"{scene_name}_{label}_s{valid_count}" 
-        metadata = section_hsi.metadata.copy()
-        metadata["name"] = section_name
+    match = re.match(r"(f\d{6}t\d{2}p\d{2}r\d{2})", filename)
 
-        section_hsi = HSI(
-            data=section_hsi.data,
-            wavelengths=section_hsi.wavelengths,
-            dtype=section_hsi.dtype,
-            metadata=metadata
-        )
+    if match is not None:
+        return match.group(1)
 
-        save_path = os.path.join(target_dir, f"{section_name}")
-        save_hsi(section_hsi, save_path)
+    if "rdn" in filename:
+        return filename.split("rdn")[0]
 
-    print(f"Saved sections in '{base_folder}' (Train/Test split applied)")
+    if "_" in filename:
+        return filename.split("_")[0]
 
+    return filename
+
+def _compute_effective_bit_depth(data: np.ndarray) -> int:
+    """
+    Compute effective bit depth from the observed data range.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input data.
+
+    Returns
+    -------
+    int
+        Number of bits needed to represent the observed value span.
+    """
+
+    data_min = int(np.min(data))
+    data_max = int(np.max(data))
+
+    span = data_max - data_min + 1
+
+    if span <= 1:
+        return 1
+
+    return int(math.ceil(math.log2(span)))

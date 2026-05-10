@@ -124,3 +124,10 @@ class DictionaryCoherence(Metric):
             value=float(value),
             unit=self.unit,
         )
+
+
+DEFAULT_DICTIONARY_METRICS = [RepresentationError(), MeanSparsity(), DictionaryCoherence()]
+
+
+
+

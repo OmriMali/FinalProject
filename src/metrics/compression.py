@@ -157,3 +157,5 @@ class CompressionRate(Metric):
             unit=self.unit,
         )
 
+
+DEFAULT_COMRESSION_METRICS = [RMSE(), PSNR(), SAM(), CompressionRate()]

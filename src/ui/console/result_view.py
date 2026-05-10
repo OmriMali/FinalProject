@@ -1,6 +1,8 @@
 from src.compressors.base import Compressor
 from src.core.hsi import HSI
 from src.core.results import CompressionRunResult, DictionaryTrainingResult
+from src.core.training_signals import TrainingSignals
+from src.dictionary_trainers.base import DictionaryTrainer
 
 
 def print_compression_run_header(
@@ -21,7 +23,7 @@ def print_compression_run_header(
         print(f"Scene:\t\t{metadata.scene_name}")
 
     if metadata.section_idx is not None:
-        print(f"Section:\t\t{metadata.scene_name}")
+        print(f"Section:\t{metadata.section_idx}")
 
     if metadata.sensor is not None:
         print(f"Sensor:\t\t{metadata.sensor}")
@@ -30,7 +32,6 @@ def print_compression_run_header(
     print(f"Compressor:\t{compressor.name}")
     print("=" * 60)
     print()
-
 
 def print_compression_result(
     result: CompressionRunResult,
@@ -41,6 +42,48 @@ def print_compression_result(
     print()
     print("=" * 60)
     print("COMPRESSION RESULTS")
+    print("=" * 60)
+
+    for metric in result.metrics.values():
+        value = f"{metric.value:.4f}"
+
+        if metric.unit is not None:
+            value += f"\t\t[{metric.unit}]"
+
+        print(f"{metric.name:<25}\t{value}")
+
+    print("=" * 60)
+    print()
+
+
+def print_dictionary_training_header(
+    signals: TrainingSignals,
+    trainer: DictionaryTrainer,
+) -> None:
+    """
+    Print a short summary before a dictionary training.
+    """
+    print()
+    print("=" * 60)
+    print("DICTIONARY TRAINING")
+    print("=" * 60)
+
+    print(f"Num of Signals:\t{signals.num_signals}")
+    print(f"Num of Atoms:\t{trainer.config.K}")
+    print(f"Aimed Sparsity:\t{trainer.config.T_0}")
+    print(f"Axis:\t\t{signals.axis.name}")
+    print("=" * 60)
+    print()
+
+def print_dictionary_training_result(
+    result: DictionaryTrainingResult,
+) -> None:
+    """
+    Print Dictionary training results.
+    """
+    print()
+    print("=" * 60)
+    print("DICTIONARY TRAINING RESULTS")
     print("=" * 60)
 
     for metric in result.metrics.values():

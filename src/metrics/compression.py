@@ -158,4 +158,4 @@ class CompressionRate(Metric):
         )
 
 
-DEFAULT_COMRESSION_METRICS = [RMSE(), PSNR(), SAM(), CompressionRate()]
+DEFAULT_COMPRESSION_METRICS = [RMSE(), PSNR(), SAM(), CompressionRate()]

@@ -3,14 +3,18 @@ from pathlib import Path
 
 from src.pipeline.callbacks import RunnerCallback
 from src.core.results import CompressionRunResult, DictionaryTrainingResult
-from src.loggers.formatting import format_shape, format_transform_name
+
+from src.pipeline.serialization import format_shape
 
 COMPRESSION_COLUMNS = [
     # Run info
     "timestamp", "machine", "scene_id", "scene_name", "section_idx", "shape", "bit_depth", "compressor",
 
-    # HCS1D / HCS3D common config
-    "K", "sr", "axis", "Phi", "Psi", "Phis", "Psis",
+    # HCS1D
+    "K", "sr", "axis", "Phi", "Psi",
+
+    # HCS3D
+    "sr_h", "sr_w", "sr_b", "Phi_h", "Phi_w", "Phi_b", "Psi_h", "Psi_w", "Psi_b",
 
     # CCSDS123 config
     "local_sum_mode", "P", "Omega", "a", "block_size", "protect_bitstream",

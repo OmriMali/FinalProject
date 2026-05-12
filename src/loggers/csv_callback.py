@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.pipeline.callbacks import RunnerCallback
 from src.core.results import CompressionRunResult, DictionaryTrainingResult
+from src.loggers.formatting import format_shape, format_transform_name
 
 COMPRESSION_COLUMNS = [
     # Run info
@@ -63,7 +64,6 @@ def _append_csv_row(path: Path, row: dict, columns: list[str]) -> None:
 
         writer.writerow(_normalize_row(row, columns))
 
-
 class CSVLoggerCallback(RunnerCallback):
     """
     CSV logger callback for experiment results.
@@ -100,7 +100,7 @@ class CSVLoggerCallback(RunnerCallback):
             "scene_id": metadata.scene_id,
             "scene_name": metadata.scene_name,
             "section_idx": metadata.section_idx,
-            "shape": str(metadata.shape),
+            "shape": format_shape(metadata.shape),
             "bit_depth": metadata.bit_depth,
             "compressor": result.run_metadata.algorithm_name,
         }

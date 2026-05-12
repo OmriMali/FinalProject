@@ -334,7 +334,7 @@ def n_bomp(Ds, Y, K, tol=1e-6, progress_callback=None, **kwargs):
         # Step 7: Advance k
         k += 1
         if progress_callback:
-            progress_callback(_get_curr_k(Is) / K)
+            progress_callback(min(_get_curr_k(Is) / K, 1.0))
 
     # Step 8: Compute X
     full_shape = [D.shape[1] for D in Ds]

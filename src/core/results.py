@@ -17,15 +17,22 @@ class RunMetadata:
     timestamp : str
         Time when the run was created.
 
-    machine : str | None, optional
+    machine : str | None
         Identifier for the computer used for the run.
 
-    tags : dict, optional
+    algorithm_name : str | None
+        Name of the algorithm used in the run.
+
+    algorithm_config : dict
+        Flat dictionary of algorithm configuration parameters.
+
+    tags : dict
         Additional user-defined run tags.
     """
     timestamp: str
     machine: str | None = None
-
+    algorithm_name: str | None = None
+    algorithm_config: dict = field(default_factory=dict)
     tags: dict = field(default_factory=dict)
 
 

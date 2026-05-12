@@ -7,113 +7,58 @@ from src.core.hsi import HSI
 from src.core.training_signals import TrainingSignals
 from src.core.results import CompressionRunResult, DictionaryTrainingResult, RunMetadata
 from src.metrics.base import Metric, MetricResult
-from src.metrics.compression import DEFAULT_COMRESSION_METRICS
+from src.metrics.compression import DEFAULT_COMPRESSION_METRICS
 from src.metrics.dictionary import DEFAULT_DICTIONARY_METRICS
 from src.compressors.base import Compressor
 from src.dictionary_trainers.base import DictionaryTrainer
-from src.pipeline.status import RunStatus, RunEventType, StatusCallback
+from src.pipeline.progress import RunProgress
+from src.pipeline.callbacks import RunnerCallback
 
 class Runner:
     """
     Orchestrates algorithm execution, timing, and metric evaluation.
     """
-    def __init__(self, status_callback: StatusCallback | None = None):
-        self.status_callback = status_callback
+    def __init__(self, callbacks: list[RunnerCallback] | None = None):
+        self.callbacks = callbacks or []
     
-    def _emit_status(self, status: RunStatus) -> None:
-        """
-        Emit a status event to the configured status callback.
-        """
-        if self.status_callback is not None:
-            self.status_callback(status)
+    def _notify_compression_start(self, hsi: HSI, compressor: Compressor) -> None:
+        for callback in self.callbacks:
+            callback.on_compression_start(hsi, compressor)
     
-    def _emit_message(self, stage: str, message: str) -> None:
-        """
-        Emit a message event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.MESSAGE,
-                stage=stage,
-                message=message,
-            )
-        )
+    def _notify_compression_end(self, result: CompressionRunResult) -> None:
+        for callback in self.callbacks:
+            callback.on_compression_end(result)
 
-    def _start_progress(self, stage: str, message: str | None = None) -> None:
-        """
-        Emit a progress-start event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.PROGRESS_START,
-                stage=stage,
-                message=message,
-                progress=0.0,
-            )
-        )
+    def _notify_dictionary_training_start(self, signals: TrainingSignals, trainer: DictionaryTrainer) -> None:
+        for callback in self.callbacks:
+            callback.on_dictionary_training_start(signals, trainer)
 
-    def _update_progress(self, stage: str, progress: float) -> None:
-        """
-        Emit a progress-update event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.PROGRESS_UPDATE,
-                stage=stage,
-                progress=progress,
-            )
-        )
+    def _notify_dictionary_training_end(self, result: DictionaryTrainingResult) -> None:
+        for callback in self.callbacks:
+            callback.on_dictionary_training_end(result)
 
-    def _end_progress(self, stage: str, message: str | None = None) -> None:
-        """
-        Emit a progress-end event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.PROGRESS_END,
-                stage=stage,
-                message=message,
-                progress=1.0,
-            )
-        )
+    def _notify_progress(self, stage: str, value: float, message: str | None = None) -> None:
+        
+        value = max(0.0, min(1.0, value))
+        progress = RunProgress(stage, value, message)
 
-    def _emit_done(self, message: str = "Run complete") -> None:
-        """
-        Emit a run-complete event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.DONE,
-                stage="done",
-                message=message,
-            )
-        )
+        for callback in self.callbacks:
+            callback.on_progress(progress)
 
-    def _emit_error(self, stage: str, message: str) -> None:
-        """
-        Emit an error event.
-        """
-        self._emit_status(
-            RunStatus(
-                event_type=RunEventType.ERROR,
-                stage=stage,
-                message=message,
-            )
-        )
+    def _notify_error(self, error: Exception) -> None:
+        for callback in self.callbacks:
+            callback.on_error(error)
 
-    def _make_progress_callback(self, stage: str):
-        """
-        Create a float progress callback for an algorithm stage.
-        """
-        def callback(progress: float) -> None:
-            self._update_progress(stage, progress)
+    def _make_progress_callback(self, stage: str, message: str | None = None):
+        def callback(value: float) -> None:
+            self._notify_progress(stage, value, message)
 
         return callback
 
 
     def run_compression(self,
                         hsi: HSI, compressor: Compressor,
-                        metrics: list[Metric] = DEFAULT_COMRESSION_METRICS,
+                        metrics: list[Metric] = DEFAULT_COMPRESSION_METRICS,
                         tags: dict | None = None,
                         ) -> CompressionRunResult:
         """
@@ -144,19 +89,17 @@ class Runner:
             tags=tags or {}
         )
 
-        self._start_progress("compression")
+        self._notify_compression_start(hsi, compressor)
+
         compressor._progress_callback = self._make_progress_callback("compression")
         start = perf_counter()
         compressed = compressor.compress(hsi)
         compression_time = perf_counter() - start
-        self._end_progress("compression")
 
-        self._start_progress("decompression")
         compressor._progress_callback = self._make_progress_callback("decompression")
         start = perf_counter()
         reconstructed = compressor.decompress(compressed)
         decompression_time = perf_counter() - start
-        self._end_progress("decompression")
 
         partial = CompressionRunResult(
             original=hsi,
@@ -181,6 +124,8 @@ class Runner:
                                                         unit="s")
         
         result = replace(partial, metrics=computed_metrics)
+
+        self._notify_compression_end(result)
 
         return result
 
@@ -218,13 +163,13 @@ class Runner:
         machine=gethostname(),
         tags=tags or {}
         )
+        
+        self._notify_dictionary_training_start(signals, trainer)
 
-        self._start_progress("training")
         trainer._progress_callback = self._make_progress_callback("training")
         start = perf_counter()
         dictionary, coefficients = trainer.fit(signals)
         training_time = perf_counter() - start
-        self._end_progress("training")
 
         partial = DictionaryTrainingResult(signals,
                                            coefficients,
@@ -242,6 +187,8 @@ class Runner:
                                                      unit="s")
         
         result = replace(partial, metrics=computed_metrics)
+
+        self._notify_dictionary_training_end(result)
 
         return result
         

@@ -13,6 +13,7 @@ from src.compressors.base import Compressor
 from src.dictionary_trainers.base import DictionaryTrainer
 from src.pipeline.progress import RunProgress
 from src.pipeline.callbacks import RunnerCallback
+from src.pipeline.serialization import config_to_row
 
 class Runner:
     """
@@ -86,6 +87,8 @@ class Runner:
         run_metadata = RunMetadata(
             timestamp=datetime.now().isoformat(timespec="seconds"),
             machine=gethostname(),
+            algorithm_name=compressor.name,
+            algorithm_config=config_to_row(compressor.config),
             tags=tags or {}
         )
 
@@ -161,6 +164,8 @@ class Runner:
         run_metadata = RunMetadata(
         timestamp=datetime.now().isoformat(timespec="seconds"),
         machine=gethostname(),
+        algorithm_name=trainer.name,
+        algorithm_config=config_to_row(trainer.config),
         tags=tags or {}
         )
         

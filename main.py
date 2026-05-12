@@ -1,42 +1,54 @@
+import numpy as np
 import matplotlib.pyplot as plt
 
-from src.compressors.ccsds123 import CCSDS123
-from src.compressors.hcs1d import HCS1D
-from src.compressors.hcs3d import HCS3D
-from src.compressors.registry import list_compressors, get_compressor
-from src.math.measurement_matrices import list_measurements, get_measurement_matrix
-from src.math.transforms import list_transforms, get_transform
-from src.io import loaders, aviris
-from src.pipeline.compression_running import CompressionRunner
-from src.pipeline.dictionary_learning import DictionaryLearner
-from src.core.compression_run_item import CompressionRunItem
-from src.pipeline.logger import Logger
+from src.pipeline.runner import Runner
+from src.ui.console.callback import ConsoleCallback
+from src.loggers.csv_callback import CSVLoggerCallback
 
-# D_path = r"results\dictionaries\JasperRidge_s53_k_svd_20260412_203247.npz"
+from src.core.dictionary import Axis
+from src.compressors.hcs1d import HCS1D, HCS1DConfig
+from src.compressors.hcs3d import HCS3D, HCS3DConfig
+from src.compressors.ccsds123 import CCSDS123, CCSDS123Config
+from src.dictionary_trainers.k_svd import K_SVD, K_SVDConfig
+from src.io.hsi import load_hsi, save_hsi
+from src.io.dictionary import load_dictionary, save_dictionary
+from src.io.training_signals import load_training_signals, save_training_signals
+from src.preprocessing.training_signals import sample_training_signals
+from src.io import aviris
+from src.preprocessing.hsi import trim_borders, crop_hsi_sections
 
-hsi = loaders.load_hsi(r"raw\JasperRidge\sections\f060514t01p00r09s4.npy")
-compressor = get_compressor("hcs1d")
+# ========== Load Data ========== #
 
-config = CompressionRunItem(
-    hsi= hsi,
-    compressor_name="hcs1d",
-    compressor_params= {
-        'K': 30,
-        'sr': 0.1,
-        'axis': 1,
-        'Phi_name': "SUBSAMPLING",
-        'Psi_name': "IDCT"
-    },
-    experiment_machine = 'Almog - Desktop',
-    save_hsi=True
-)
+hsi = load_hsi(r"data\processed\JasperRidge\JasperRidge_2.npz")
+dict_path = r"results\dictionaries\JasperRidge_0_Dict1.npz"
 
+# ========== Compressors ========== #
 
-result = CompressionRunner(logger=Logger()).run(config)
-recon = loaders.load_hsi(r"results\experiments\exp_20260502_172047\reconstruction.npy")
-rgb, _, _ = recon.get_rgb()
+config = HCS1DConfig(K=3, sr=0.1, axis=Axis.SPECTRAL, Phi="SUBSAMPLING", Psi=f"LEARNED:path={dict_path}")
+compressor = HCS1D(config=config)
+
+# config = HCS3DConfig(K=4000, sr=(0.8, 0.8, 0.1), Psis=("IDCT", "IDCT", f"LEARNED:path={dict_path}"))
+# compressor = HCS3D(config=config)
+
+# config = CCSDS123Config(a=50)
+# compressor = CCSDS123(config=config)
+
+# ========== Trainers ========== #
+
+# config = K_SVDConfig(K=400, T_0=3)
+# trainer = K_SVD(config)
+
+# ========== Pipeline ========== #
+
+runner = Runner(callbacks=[ConsoleCallback(), CSVLoggerCallback(log_dir="results/logs")])
+result = runner.run_compression(hsi, compressor)
+# result = runner.run_dictionary_training(signals, trainer)
+
+# ========== Plot ========== #
+
 plt.figure()
-plt.imshow(rgb)
+plt.subplot(1, 2, 1)
+plt.imshow(hsi.data[:,:,10], cmap='gray')
+plt.subplot(1, 2, 2)
+plt.imshow(result.reconstructed.data[:,:,10], cmap='gray')
 plt.show()
-
-

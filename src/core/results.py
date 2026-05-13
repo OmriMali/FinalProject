@@ -26,6 +26,9 @@ class RunMetadata:
     algorithm_config : dict
         Flat dictionary of algorithm configuration parameters.
 
+    artifacts_dir : str | None
+        Location of run artifacts, such as the reconstructed HSI.    
+    
     tags : dict
         Additional user-defined run tags.
     """
@@ -33,6 +36,7 @@ class RunMetadata:
     machine: str | None = None
     algorithm_name: str | None = None
     algorithm_config: dict = field(default_factory=dict)
+    artifacts_dir: str | None = None
     tags: dict = field(default_factory=dict)
 
 

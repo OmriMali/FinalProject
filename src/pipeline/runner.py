@@ -33,7 +33,10 @@ class Runner:
     
     def _notify_compression_end(self, result: CompressionRunResult) -> None:
         for callback in self.callbacks:
-            callback.on_compression_end(result)
+            updated = callback.on_compression_end(result)
+            if updated is not None:
+                result = updated
+        return result
 
     def _notify_dictionary_training_start(self, signals: TrainingSignals, trainer: DictionaryTrainer) -> None:
         for callback in self.callbacks:
@@ -41,7 +44,10 @@ class Runner:
 
     def _notify_dictionary_training_end(self, result: DictionaryTrainingResult) -> None:
         for callback in self.callbacks:
-            callback.on_dictionary_training_end(result)
+            updated = callback.on_dictionary_training_end(result)
+            if updated is not None:
+                result = updated
+        return result
 
     def _notify_progress(self, stage: str, value: float, message: str | None = None) -> None:
         
@@ -132,8 +138,7 @@ class Runner:
                                                         unit="s")
         
         result = replace(partial, metrics=computed_metrics)
-
-        self._notify_compression_end(result)
+        result = self._notify_compression_end(result)
 
         return result
 
@@ -197,8 +202,7 @@ class Runner:
                                                      unit="s")
         
         result = replace(partial, metrics=computed_metrics)
-
-        self._notify_dictionary_training_end(result)
+        result = self._notify_dictionary_training_end(result)
 
         return result
         

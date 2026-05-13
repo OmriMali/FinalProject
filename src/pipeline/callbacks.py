@@ -16,13 +16,13 @@ class RunnerCallback:
     def on_compression_start(self, hsi: HSI, compressor: Compressor) -> None:
         pass
 
-    def on_compression_end(self, result: CompressionRunResult) -> None:
+    def on_compression_end(self, result: CompressionRunResult) -> CompressionRunResult | None:
         pass
 
     def on_dictionary_training_start(self, signals: TrainingSignals, trainer: DictionaryTrainer) -> None:
         pass
 
-    def on_dictionary_training_end(self, result: DictionaryTrainingResult) -> None:
+    def on_dictionary_training_end(self, result: DictionaryTrainingResult) -> DictionaryTrainingResult | None:
         pass
 
     def on_progress(self, progress: RunProgress) -> None:

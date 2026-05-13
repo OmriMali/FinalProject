@@ -15,11 +15,11 @@ from src.io.dictionary import load_dictionary, save_dictionary
 from src.io.training_signals import load_training_signals, save_training_signals
 from src.preprocessing.training_signals import sample_training_signals
 from src.io import aviris
-from src.preprocessing.hsi import trim_borders, crop_hsi_sections
+from src.preprocessing.hsi import trim_borders, crop_hsi_sections, filter_spectral_bands
 
 # ========== Load Data ========== #
 
-hsi = load_hsi(r"data\processed\JasperRidge\JasperRidge_2.npz")
+hsi = load_hsi(r"data\processed\JasperRidge\JasperRidge_r1_c1.npz")
 dict_path = r"results\dictionaries\JasperRidge_0_Dict1.npz"
 
 # ========== Compressors ========== #
@@ -52,3 +52,23 @@ plt.imshow(hsi.data[:,:,10], cmap='gray')
 plt.subplot(1, 2, 2)
 plt.imshow(result.reconstructed.data[:,:,10], cmap='gray')
 plt.show()
+
+
+# for scene in ["JasperRidge", "MoffetField", "Cuprite"]:
+#     hsi = load_hsi(fr"data\processed\{scene}\{scene}.npz")
+#     hsi = filter_spectral_bands(hsi, remove_ranges=[(104, 108), (150,163)], remove_bands=[220])
+#     save_hsi(hsi, fr"data\processed\{scene}\{scene}.npz")
+#     sections = crop_hsi_sections(hsi, (150, 150))
+#     for sec in sections:
+#         save_hsi(sec, fr"data\processed\{scene}\{scene}_r{sec.metadata.section_row}_c{sec.metadata.section_col}.npz")
+
+# plt.figure()
+# plt.subplot(2, 2, 1)
+# plt.imshow(load_hsi(fr"data\processed\JasperRidge\JasperRidge_r4_c1.npz").data[:,:,10])
+# plt.subplot(2, 2, 2)
+# plt.imshow(load_hsi(fr"data\processed\JasperRidge\JasperRidge_r4_c2.npz").data[:,:,10])
+# plt.subplot(2, 2, 3)
+# plt.imshow(load_hsi(fr"data\processed\JasperRidge\JasperRidge_r5_c1.npz").data[:,:,10])
+# plt.subplot(2, 2, 4)
+# plt.imshow(load_hsi(fr"data\processed\JasperRidge\JasperRidge_r5_c2.npz").data[:,:,10])
+# plt.show()

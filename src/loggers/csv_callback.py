@@ -8,7 +8,7 @@ from src.pipeline.serialization import format_shape
 
 COMPRESSION_COLUMNS = [
     # Run info
-    "timestamp", "machine", "scene_id", "scene_name", "section_idx", "shape", "bit_depth", "compressor",
+    "timestamp", "machine", "scene_id", "scene_name", "section_row", "section_col", "shape", "bit_depth", "compressor",
 
     # HCS1D
     "K", "sr", "axis", "Phi", "Psi",
@@ -103,7 +103,8 @@ class CSVLoggerCallback(RunnerCallback):
             "machine": result.run_metadata.machine,
             "scene_id": metadata.scene_id,
             "scene_name": metadata.scene_name,
-            "section_idx": metadata.section_idx,
+            "section_row": metadata.section_row,
+            "section_col": metadata.section_col,
             "shape": format_shape(metadata.shape),
             "bit_depth": metadata.bit_depth,
             "compressor": result.run_metadata.algorithm_name,

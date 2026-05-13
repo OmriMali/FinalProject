@@ -16,7 +16,8 @@ def load_hsi(path: str) -> HSI:
         sensor=file["sensor"].item(),
         scene_id=file["scene_id"].item(),
         scene_name=file["scene_name"].item(),
-        section_idx=file["section_idx"].item(),
+        section_row=file["section_row"].item(),
+        section_col=file["section_col"].item(),
         attributes=file["attributes"].item(),
     )
     return HSI(
@@ -38,6 +39,7 @@ def save_hsi(hsi: HSI, path: str) -> None:
         sensor=hsi.metadata.sensor,
         scene_id=hsi.metadata.scene_id,
         scene_name=hsi.metadata.scene_name,
-        section_idx=hsi.metadata.section_idx,
+        section_row=hsi.metadata.section_row,
+        section_col=hsi.metadata.section_col,
         attributes=hsi.metadata.attributes,
     )

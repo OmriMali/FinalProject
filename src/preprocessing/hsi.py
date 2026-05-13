@@ -82,7 +82,8 @@ def filter_spectral_bands(hsi: HSI,
         sensor=hsi.metadata.sensor,
         scene_id=hsi.metadata.scene_id,
         scene_name=hsi.metadata.scene_name,
-        section_idx=hsi.metadata.section_idx,
+        section_row=hsi.metadata.section_row,
+        section_col=hsi.metadata.section_col,
         attributes={
             **hsi.metadata.attributes,
             "spectral_band_filtering": {
@@ -170,15 +171,13 @@ def trim_borders(hsi: HSI, black_value: int | float = -50) -> HSI:
         sensor=hsi.metadata.sensor,
         scene_id=hsi.metadata.scene_id,
         scene_name=hsi.metadata.scene_name,
-        section_idx=hsi.metadata.section_idx,
+        section_row=hsi.metadata.section_row,
+        section_col=hsi.metadata.section_col,
         attributes={
             **hsi.metadata.attributes,
             "black_border_trim": {
                 "black_value": black_value,
-                "row_start": int(row_start),
-                "row_end": int(row_end),
-                "col_start": int(col_start),
-                "col_end": int(col_end),
+                "start_pixel": (int(row_start), int(col_start))
             },
         },
     )
@@ -253,6 +252,8 @@ def crop_hsi_sections(hsi: HSI, section_shape: tuple[int, int], drop_incomplete:
     This function does not trim black borders. If border trimming is needed,
     run it before calling this function.
 
+    Adds the section row and column as HSIMetadata fields.
+
     Parameters
     ----------
     hsi : HSI
@@ -278,10 +279,9 @@ def crop_hsi_sections(hsi: HSI, section_shape: tuple[int, int], drop_incomplete:
         raise ValueError("section_shape values must be positive")
 
     sections = []
-    section_idx = 0
 
-    for row_start in range(0, h, section_h):
-        for col_start in range(0, w, section_w):
+    for section_row, row_start in enumerate(range(0, h, section_h)):
+        for section_col, col_start in enumerate(range(0, w, section_w)):
             row_end = min(row_start + section_h, h)
             col_end = min(col_start + section_w, w)
 
@@ -306,16 +306,8 @@ def crop_hsi_sections(hsi: HSI, section_shape: tuple[int, int], drop_incomplete:
                 sensor=hsi.metadata.sensor,
                 scene_id=hsi.metadata.scene_id,
                 scene_name=hsi.metadata.scene_name,
-                section_idx=section_idx,
-                attributes={
-                    **hsi.metadata.attributes,
-                    "section_crop": {
-                        "row_start": int(row_start),
-                        "row_end": int(row_end),
-                        "col_start": int(col_start),
-                        "col_end": int(col_end),
-                    },
-                },
+                section_row=section_row+1,
+                section_col=section_col+1
             )
 
             sections.append(
@@ -325,10 +317,4 @@ def crop_hsi_sections(hsi: HSI, section_shape: tuple[int, int], drop_incomplete:
                 )
             )
 
-            section_idx += 1
-
     return sections
-
-
-
-

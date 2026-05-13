@@ -25,8 +25,8 @@ class ConsoleCallback(RunnerCallback):
         if metadata.scene_name is not None:
             print(f"Scene:\t\t{metadata.scene_name}")
 
-        if metadata.section_idx is not None:
-            print(f"Section:\t{metadata.section_idx}")
+        if metadata.section_row is not None:
+            print(f"Section:\tr{metadata.section_row}_c{metadata.section_col}")
 
         if metadata.sensor is not None:
             print(f"Sensor:\t\t{metadata.sensor}")

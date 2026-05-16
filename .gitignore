@@ -3,10 +3,10 @@ data/
 raw/
 results/*
 !results/dictionaries/
+!results/artifacts/dictionary
 
 # --- additionals ---
 main.py
-design_review.md
 
 
 # --- Python Environment ---

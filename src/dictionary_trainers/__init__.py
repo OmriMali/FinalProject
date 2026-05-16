@@ -1,0 +1,1 @@
+from src.dictionary_trainers.k_svd import K_SVD, K_SVDConfig

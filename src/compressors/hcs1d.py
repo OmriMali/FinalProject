@@ -9,7 +9,7 @@ from src.core.dictionary import Axis
 from src.transforms.measurements import get_measurement
 from src.transforms.sparse_bases import get_sparse_base
 from src.math import regression_algs, n_way_ops, numeric
-from src.io import bitstream
+from src.utils import bitstream
 
 
 

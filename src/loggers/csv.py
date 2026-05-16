@@ -23,7 +23,7 @@ COMPRESSION_COLUMNS = [
     "RMSE", "PSNR", "SAM", "CR", "COMP_TIME", "DECOMP_TIME",
 
     # Tags
-    "BER",
+    "BER", "experiment_group",
 
     # Directories
     "artifact_dir",
@@ -38,6 +38,9 @@ DICTIONARY_COLUMNS = [
 
     # Metrics
     "REP_ERR", "MEAN_K", "MU", "TRAIN_TIME",
+
+    # Tags
+    "experiment_group",
 
     # Directories
     "artifact_dir",

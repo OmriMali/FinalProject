@@ -21,16 +21,27 @@ def register_sparse_base(name: str):
     return decorator
 
 def get_sparse_base(name: str, n: int, **kwargs):
-    if name.upper().startswith("LEARNED"):
-        base = "LEARNED"
+    """
+    Build a sparse basis matrix.
 
-        if ":" in name:
-            _, spec = name.split(":", 1)
+    Supports parameterized transforms such as:
 
-            if spec.startswith("path="):
-                kwargs["path"] = spec.split("=", 1)[1]
+    ``LEARNED:directory=...,name=...``
+    """
 
-        key = base
+    if ":" in name:
+        base, spec = name.split(":", 1)
+        key = base.upper()
+
+        for item in spec.split(","):
+            if "=" not in item:
+                raise ValueError(
+                    f"Invalid transform parameter: {item}"
+                )
+
+            k, v = item.split("=", 1)
+            kwargs[k.strip()] = v.strip()
+
     else:
         key = name.upper()
 
@@ -59,15 +70,21 @@ def idct_basis(n, **kwargs):
     return sp.fft.idct(np.eye(n), axis=0, norm='ortho')
 
 @register_sparse_base("LEARNED")
-def learned_basis(n, path=None, **kwargs):
+def learned_basis(n, directory: str | None = None, name: str | None = None, **kwargs):
     
-    if path is None:
-        raise ValueError("LEARNED transform requires path")
+    if directory is None:
+        raise ValueError("LEARNED transform requires directory")
 
-    dictionary = load_dictionary(path)
+    if name is None:
+        raise ValueError("LEARNED transform requires name")
+
+    dictionary = load_dictionary(directory, name)
     D = dictionary.data
 
     if n != D.shape[0]:
-        raise ValueError(f"Signal length {n} does not match dictionary signals of length {D.shape[0]}")
-    
+        raise ValueError(
+            f"Signal length {n} does not match dictionary "
+            f"signal length {D.shape[0]}"
+        )
+
     return D

@@ -23,7 +23,10 @@ COMPRESSION_COLUMNS = [
     "RMSE", "PSNR", "SAM", "CR", "COMP_TIME", "DECOMP_TIME",
 
     # Tags
-    "BER"
+    "BER",
+
+    # Directories
+    "artifact_dir",
 ]
 
 DICTIONARY_COLUMNS = [
@@ -35,6 +38,9 @@ DICTIONARY_COLUMNS = [
 
     # Metrics
     "REP_ERR", "MEAN_K", "MU", "TRAIN_TIME",
+
+    # Directories
+    "artifact_dir",
 ]
 
 def _normalize_row(row: dict, columns: list[str]) -> dict:
@@ -122,6 +128,8 @@ class CSVLoggerCallback(RunnerCallback):
             for key, value in result.run_metadata.tags.items()
         })
 
+        row.update({"artifact_dir": result.run_metadata.artifact_dir})
+
         return row
     
     def _dictionary_row(self, result: DictionaryTrainingResult) -> dict:
@@ -142,5 +150,7 @@ class CSVLoggerCallback(RunnerCallback):
             metric.short_name: metric.value
             for metric in result.metrics.values()
         })
+
+        row.update({"artifact_dir": result.run_metadata.artifact_dir})
 
         return row

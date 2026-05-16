@@ -1,9 +1,13 @@
 # --- Data ------
 data/
 raw/
+
 results/*
 !results/dictionaries/
-!results/artifacts/dictionary
+!results/artifacts/
+results/artifacts/*
+!results/artifacts/dictionary/
+!results/artifacts/dictionary/**
 
 # --- additionals ---
 main.py

@@ -47,41 +47,20 @@ import os
 #     max_iter=50 # Iterations
 # )
 
-# # # Option C: K-SVD from multiple HSI
-# # Improved Option B Logic
-# all_Y = []
-# folder = r"C:\Users\omrim\Documents\FinalProject\raw\JasperRidge\sections"
-# for filename in os.listdir(folder)[:5]: # Take 5 patches
-#     patch = util.load_hsi(os.path.join(folder, filename))
-#     # This ensures every patch is normalized exactly like Option A
-#     Y_patch = dictionary_learning.prep_hsi_for_dict_learning(patch, N_train=2000, mode=2)
-#     all_Y.append(Y_patch)
 
-# Y_train = np.hstack(all_Y) # Combined training set
-# D_learned, metadata = workflow.learn_dictionary(
-#     Y=Y_train,
-#     dict_name="JasperRidge ",
-#     algorithm=dictionary_learning.k_svd,
-#     base_dir="results/dictionaries",
-#     K=256  ,      # Dictionary size
-#     T_0=3,     # Sparsity constraint
-#     max_iter=50 # Iterations 
-# )
-
-
-# Option 2: Run compression:
-# Load HSI
-hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\test\f060514t01p00r09_s11.npy")
-# Setup Compressor
+# # Option 2: Run compression:
+# # Load HSI
+# hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\test\f060514t01p00r09_s11.npy")
+# # Setup Compressor
 # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\Mixed_k_svd_20260501_102323.npz"
 # # D_path = r"C:\Users\omrim\Documents\FinalProject\results\dictionaries\MoffetField_k_svd_20260428_145325.npz"
 
-# compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
-# # compressor = CCSDS123(P=2, a=400)
+# # compressor = HCS1D(K=3, sr=1, axis=2, Phi_name="SUBSAMPLING", Psi_name=f"LEARNED:path={D_path}")
+# compressor = CCSDS123(P=2, a=400)
 # # compressor = HCS3D(K=4800, sr = [0.5, 0.5, 0.1], Phi_names=["SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING"], Psi_names=["IDCT", "IDCT", f"LEARNED:path={D_path}"])
 
 # # # Run   
-# for sr in [0.094]:
+# for sr in [0.090909]:
 #     ber = 0.00000
 #     compressor.sr = sr
 #     compressor.protected_bitstream = (ber > 0)
@@ -89,9 +68,8 @@ hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\t
 
 # # Visualize
 # rec_hsi = results["reconstructed_hsi"]
-# rgb, _, _ = hsi.get_rgb()
+# rgb, _, _ = hsi.get_rgb() 
 # rec_rgb, _, _ = rec_hsi.get_rgb()
-
 # plt.figure()
 # plt.subplot(1, 2, 1)
 # plt.imshow(rgb)
@@ -155,43 +133,70 @@ hsi = util.load_hsi(r"C:\Users\omrim\Documents\FinalProject\raw\Mixed\sections\t
 # print("\nBenchmark complete. 180 total runs logged with randomized scene selection.")
 
 
+# PLOTS:----------------------------------------------------------------------------------------
+# 1. Setup paths to your result logs
+hcs_csv = r"C:\Users\omrim\Documents\FinalProject\results\hcs1d\hcs1d_log_plot.csv"
+ccs_csv = r"C:\Users\omrim\Documents\FinalProject\results\ccsds123\ccsds123_log_plot.csv"
 
-# # 1. Setup paths to your result logs
-# hcs_csv = r"C:\Users\omrim\Documents\FinalProject\results\hcs1d\hcs1d_log.csv"
-# ccs_csv = r"C:\Users\omrim\Documents\FinalProject\results\ccsds123\ccsds123_log.csv"
+# 2. Process HCS1D Data
+# Grouping by 'samplingrate' to average the 10 iterations per point
+hcs_rmse_series = data_processing.get_averaged_metric_series(
+    csv_path=hcs_csv,
+    x_metric="cr",
+    y_metric="rmse",
+    label="HCS1D",
+    groupby_cols=["samplingrate"]
+)
 
-# # 2. Process HCS1D Data
-# # Grouping by 'samplingrate' to average the 10 iterations per point
-# hcs_rmse_series = data_processing.get_averaged_metric_series(
-#     csv_path=hcs_csv,
-#     x_metric="cr",
-#     y_metric="rmse",
-#     label="HCS1D",
-#     groupby_cols=["samplingrate"]
-# )
+# 3. Process CCSDS123 Data
+# Grouping by 'a' (error limit) to average the 10 iterations per point
+ccs_rmse_series = data_processing.get_averaged_metric_series(
+    csv_path=ccs_csv,
+    x_metric="cr",
+    y_metric="rmse",
+    label="CCSDS123",
+    groupby_cols=["a"]
+)
 
-# # 3. Process CCSDS123 Data
-# # Grouping by 'a' (error limit) to average the 10 iterations per point
-# ccs_rmse_series = data_processing.get_averaged_metric_series(
-#     csv_path=ccs_csv,
-#     x_metric="cr",
-#     y_metric="rmse",
-#     label="CCSDS123",
-#     groupby_cols=["a"]
-# )
+# 4. Generate the Plot
+# This will use the COLOR_MAP and error bar formatting from your module
+data_processing.plot_multiple_series(
+    series_list=[hcs_rmse_series, ccs_rmse_series],
+    x_label="Compression Ratio (CR)",
+    y_label="RMSE",
+    connect_points=True,
+    show_error = True
+)
 
-# # 4. Generate the Plot
-# # This will use the COLOR_MAP and error bar formatting from your module
-# data_processing.plot_multiple_series(
-#     series_list=[hcs_rmse_series, ccs_rmse_series],
-#     x_label="Compression Ratio (CR)",
-#     y_label="RMSE",
-#     connect_points=True,
-#     show_error = True
-# )
+# Optional: Save the figure specifically for the poster
+# plt.savefig("results/comparison_plots/rmse_vs_cr_poster.png", dpi=300, bbox_inches='tight')
+plt.show()
 
-# # Optional: Save the figure specifically for the poster
-# # plt.savefig("results/comparison_plots/rmse_vs_cr_poster.png", dpi=300, bbox_inches='tight')
-# plt.show()
 
-visuals.compare_hsis([{"hsi": hsi, "label": "s11", "RMSE": 20, "CR": 10, "Compression Time": 0.5}])
+
+# # --- SIMPLIFIED POSTER VISUALS: IMAGES ---
+
+# # 1. Fetch the last 2 runs for each
+# hcs_runs = data_processing.fetch_recent(r"results\hcs1d\hcs1d_log.csv", n=2)
+# ccs_runs = data_processing.fetch_recent(r"results\ccsds123\ccsds123_log.csv", n=2)
+
+# # 2. Setup the lists for comparison
+# # These keys (CR, RMSE, etc.) will show up automatically in the metadata box
+# hcs_items = [{"hsi": util.load_hsi(e['rec_path']), 
+#               "label": "HCS", 
+#               "CR": round(e['cr'], 1), 
+#               "RMSE": round(e['rmse'], 1),
+#               "SAM": round(e['sam'], 2),
+#               "Time": f"{e['comp_time']:.1f}s"} for e in hcs_runs]
+
+# ccs_items = [{"hsi": util.load_hsi(e['rec_path']), 
+#               "label": "CCSDS", 
+#               "CR": round(e['cr'], 1), 
+#               "RMSE": round(e['rmse'], 1),
+#               "SAM": round(e['sam'], 2),
+#               "Time": f"{e['comp_time']:.1f}s"} for e in ccs_runs]
+
+# # 3. Plot them separately to fix the "weird" colors and keep titles clean
+# # We use independent_norm=True so each image stretches itself correctly
+# visuals.compare_hsis(hcs_items, independent_norm=True, fontsize=20)
+# visuals.compare_hsis(ccs_items, independent_norm=True, fontsize=20)

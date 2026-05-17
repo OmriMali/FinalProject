@@ -5,8 +5,8 @@ from matplotlib.lines import Line2D
 
 COLOR_MAP = {
     "Original": "#000000",
-    "CCSDS123": '#1f77b4',
-    "HCS1D": "#d10000",
+    "CCSDS123": "#cc6600",
+    "HCS1D": "#7f00ff",
     "OTHER": "#157c0b"
 }
 
@@ -93,24 +93,33 @@ def plot_multiple_series(series_list, x_label, y_label, connect_points=False, sh
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(f"{y_label} vs {x_label}")
-    plt.legend(handles=legend_handles, loc="upper left")
-    plt.grid(alpha=0.3)
+    
+    plt.grid(alpha=0.8, color="white")
+    plt.gcf().set_facecolor("#808080")
+    plt.gca().set_facecolor("#808080")
+    plt.gca().tick_params(colors="white")
+    plt.gca().xaxis.label.set_color("white")
+    plt.gca().yaxis.label.set_color("white")
+    plt.gca().title.set_color("white")
+    leg = plt.legend(handles=legend_handles, loc="upper left", facecolor="#414141", edgecolor="white")
+    for text in leg.get_texts():
+        text.set_color("white")
+    for spines in plt.gca().spines.values():
+        spines.set_color("white")
     plt.show()
     
-def fetch_recent(csv_path):
+def fetch_recent(csv_path, n=1):
     """
-    Returns most recent log row from csv_path as a dictionary.
+    Returns the n most recent log rows from csv_path as a list of dictionaries.
     """
     df = pd.read_csv(csv_path)
 
     # Parse timestamps safely
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-
-    # Remove invalid timestamps (optional but safer)
     df = df.dropna(subset=["timestamp"])
 
-    # Get most recent row
-    recent_row = df.loc[df["timestamp"].idxmax()]
+    # Sort by timestamp (newest first) and take top n
+    recent_rows = df.sort_values("timestamp", ascending=False).head(n)
 
-    # Convert to dictionary
-    return recent_row.to_dict()
+    # Convert to list of dictionaries
+    return recent_rows.to_dict(orient='records')

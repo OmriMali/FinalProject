@@ -9,6 +9,7 @@ DARK_STYLE = {
     "legend_facecolor": "#404040",
     "legend_edgecolor": "white",
     "legend_text_color": "white",
+    "errorbar_color": "white",
     "colors": {
         "hcs1d": "#7F00FF",
         "ccsds123": "#CC6600",

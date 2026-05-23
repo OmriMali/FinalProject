@@ -18,7 +18,10 @@ def main():
     processed_dir = r"data\processed"
     
     # ===== Scenes =====
-    scenes = ["JasperRidge", "MoffetField", "Cuprite"]
+    scenes = ["JasperRidge",
+              #"MoffetField", 
+              # "Cuprite",
+              ]
 
     # ===== Preprocess =====
     for scene in scenes:

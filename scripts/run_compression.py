@@ -9,16 +9,16 @@ from src.loggers.artifacts import ArtifactLoggerCallback
 def main():
 
     # ===== Run info =====
-    compressor_name = "hcs1d"           # "hcs1d", "hcs3d", "ccsds123"
+    compressor_name = "ccsds123"           # "hcs1d", "hcs3d", "ccsds123"
     
     save_reconstructed = True
     save_compressed = False
 
-    tags = None 
+    tags = {"experiment_group": "time_v_size"}
 
     # ===== Paths =====
-    hsi_dir = r"data\processed\JasperRidge\sections"
-    hsi_name = "JasperRidge_r1_c1"
+    hsi_dir = r"data\processed\JasperRidge\size_sweep"
+    hsi_name = "JasperRidge_h_200_w_200"
 
     dict_dir = r"C:\Users\omrim\Documents\FinalProject\results\artifacts\dictionary\2026-05-23T20_53_57_ksvd_ksvd"
     dict_name = r"dictionary"
@@ -46,7 +46,7 @@ def main():
             local_sum_mode="column",
             P=2,
             Omega=8,
-            a=50,
+            a=100,
             block_size=32,
         ),
     }

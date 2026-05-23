@@ -34,11 +34,11 @@ def main():
     save_reconstructed = False
     save_compressed = False
 
-    tags = None
+    tags = {"experiment_group": "poster_1"}
 
     # ===== Paths =====
-    hsi_dir = r"data\processed\JasperRidge\sections"
-    hsi_name = "JasperRidge_r1_c1"
+    hsi_dir = r"data\processed\JasperRidge\size_sweep"
+    hsi_name = "JasperRidge_h_128_w_128"
 
     dict_dir = r"results\artifacts\dictionary\2026-05-16T16_18_40_ksvd_ksvd"
     dict_name = "dictionary"
@@ -71,10 +71,10 @@ def main():
                 "axis": Axis.SPECTRAL,
                 "Phi": "SUBSAMPLING",
                 "Psi": learned_base,
+                "K": 3
             },
             "sweep": {
-                "K": [2, 3, 4, 5],
-                "sr": [0.05, 0.1, 0.2],
+                "sr": [1/5, 1/8, 1/10, 1/15],
             },
         },
 
@@ -103,7 +103,7 @@ def main():
                 "block_size": 32,
             },
             "sweep": {
-                "a": [0, 10, 50, 100, 300, 500],
+                "a": [10, 40, 100, 400],
             },
         },
     }

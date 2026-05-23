@@ -16,6 +16,9 @@ class RunMetadata:
     ----------
     timestamp : str
         Time when the run was created.
+    
+    experiment : str
+        Identifier for the experiment.
 
     machine : str | None
         Identifier for the computer used for the run.
@@ -29,10 +32,11 @@ class RunMetadata:
     artifact_dir : str | None
         Location of run artifacts, such as the reconstructed HSI.    
     
-    tags : dict
-        Additional user-defined run tags.
+    tags: dict | None
+        Additional run specific info.
     """
     timestamp: str
+    experiment: str
     machine: str | None = None
     algorithm_name: str | None = None
     algorithm_config: dict = field(default_factory=dict)

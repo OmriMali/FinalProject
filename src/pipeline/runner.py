@@ -69,9 +69,12 @@ class Runner:
 
 
     def run_compression(self,
-                        hsi: HSI, compressor: Compressor,
+                        hsi: HSI,
+                        compressor: Compressor,
+                        experiment: str,
+                        ber: float = 0.0,
                         metrics: list[Metric] = DEFAULT_COMPRESSION_METRICS,
-                        tags: dict | None = None,
+                        tags: dict | None=None,
                         ) -> CompressionRunResult:
         """
         Run a complete compression-decompression experiment.
@@ -84,6 +87,12 @@ class Runner:
         compressor : Compressor
             Compressor instance used for compression and decompression.
 
+        experiment : str
+            Experiment identifier.
+        
+        ber : float, optional
+            Channel bit error rate. Defaults to 0.
+
         metrics : list[Metric]
             Metrics to compute after reconstruction.
 
@@ -95,15 +104,23 @@ class Runner:
         CompressionRunResult
             Complete compression run result.
         """
+
+        if (ber < 0 or ber > 1):
+            raise ValueError("ber must be between 0 and 1")
+        
+        run_tags = {} if tags is None else dict(tags)
+        run_tags["ber"] = ber
         run_metadata = RunMetadata(
             timestamp=datetime.now().isoformat(timespec="seconds"),
+            experiment=experiment,
             machine=gethostname(),
             algorithm_name=compressor.name,
             algorithm_config=config_to_row(compressor.config),
-            tags=tags or {}
+            tags = run_tags
         )
 
         self._notify_compression_start(hsi, compressor)
+
 
         compressor._progress_callback = self._make_progress_callback("compression")
         start = perf_counter()
@@ -128,9 +145,9 @@ class Runner:
         }
 
         computed_metrics["COMP_TIME"] = MetricResult(name="Compression Time",
-                                                     short_name="COMP_TIME",
-                                                     value=float(compression_time),
-                                                     unit="s")
+                                                    short_name="COMP_TIME",
+                                                    value=float(compression_time),
+                                                    unit="s")
         
         computed_metrics["DECOMP_TIME"] = MetricResult(name="Decompression Time",
                                                         short_name="DECOMP_TIME",
@@ -143,11 +160,12 @@ class Runner:
         return result
 
 
+
     def run_dictionary_training(self,
                                 signals: TrainingSignals,
                                 trainer: DictionaryTrainer,
+                                experiment: str,
                                 metrics: list[Metric] = DEFAULT_DICTIONARY_METRICS,
-                                tags: dict | None = None,
                                 ) -> DictionaryTrainingResult:
         """
         Run a dictionary training experiment.
@@ -160,11 +178,11 @@ class Runner:
         trainer : DictionaryTrainer
             Trainer used to the experiment.
 
+        experiment : str
+            Experiment identifier.
+
         metrics : list[Metric]
             Metrics to compute after dictionary created.
-
-        tags : dict | None, optional
-            Additional user-defined run tags.
 
         Returns
         -------
@@ -173,10 +191,10 @@ class Runner:
         """
         run_metadata = RunMetadata(
         timestamp=datetime.now().isoformat(timespec="seconds"),
+        experiment=experiment,
         machine=gethostname(),
         algorithm_name=trainer.name,
         algorithm_config=config_to_row(trainer.config),
-        tags=tags or {}
         )
         
         self._notify_dictionary_training_start(signals, trainer)

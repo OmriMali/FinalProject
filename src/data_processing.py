@@ -59,25 +59,19 @@ def get_averaged_metric_series(csv_path, x_metric, y_metric, label, groupby_cols
         "label": label
     }
 
-def plot_multiple_series(series_list, x_label, y_label, connect_points=False, show_error=True):
-    plt.figure(figsize=(8, 4.5))
-
+def plot_multiple_series(series_list, x_label, y_label, connect_points=False, show_error=False, y_scale='linear', y_max=None):
+    plt.figure(figsize=(10, 6))
     legend_handles = []
-    for s in series_list:
-        color = COLOR_MAP.get(s["label"], "black")
-        
-        # Determine if we pass error bars or not
-        y_err_val = s.get("yerr") if show_error else None
 
+    for s in series_list:
+        color = COLOR_MAP.get(s["label"], "#ffffff")
+        
         plt.errorbar(
-            s["x"],
-            s["y"],
-            yerr=y_err_val,
-            fmt= '-o' if connect_points else 'o',
-            capsize=3 if show_error else 0,
+            s["x"], s["y"],
+            yerr=s.get("yerr") if show_error else None,
+            fmt='-o' if connect_points else 'o',
             color=color,
-            # If show_error is False, the bars effectively disappear
-            elinewidth=1 if show_error else 0,
+            capsize=3 if show_error else 0,
             markeredgewidth=1 if show_error else 0
         )
 
@@ -92,8 +86,17 @@ def plot_multiple_series(series_list, x_label, y_label, connect_points=False, sh
 
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    
+    # Apply the y-axis scale (linear or log)
+    plt.yscale(y_scale) 
+    
+    # --- NEW: Apply custom Y-axis headroom if provided ---
+    if y_max is not None:
+        plt.ylim(top=y_max)
+    
     plt.title(f"{y_label} vs {x_label}")
     
+    # Custom Poster Styling
     plt.grid(alpha=0.8, color="white")
     plt.gcf().set_facecolor("#808080")
     plt.gca().set_facecolor("#808080")
@@ -101,13 +104,15 @@ def plot_multiple_series(series_list, x_label, y_label, connect_points=False, sh
     plt.gca().xaxis.label.set_color("white")
     plt.gca().yaxis.label.set_color("white")
     plt.gca().title.set_color("white")
+    
     leg = plt.legend(handles=legend_handles, loc="upper left", facecolor="#414141", edgecolor="white")
     for text in leg.get_texts():
         text.set_color("white")
     for spines in plt.gca().spines.values():
         spines.set_color("white")
+        
     plt.show()
-    
+
 def fetch_recent(csv_path, n=1):
     """
     Returns the n most recent log rows from csv_path as a list of dictionaries.

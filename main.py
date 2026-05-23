@@ -168,9 +168,25 @@ data_processing.plot_multiple_series(
     show_error = True
 )
 
-# Optional: Save the figure specifically for the poster
-# plt.savefig("results/comparison_plots/rmse_vs_cr_poster.png", dpi=300, bbox_inches='tight')
-plt.show()
+
+# 1. Fetch the data
+hcs_series = data_processing.get_averaged_metric_series(
+    hcs_csv, "cr", "comp_time", "HCS1D", ["samplingrate"]
+)
+ccs_series = data_processing.get_averaged_metric_series(
+    ccs_csv, "cr", "comp_time", "CCSDS123", ["a"]
+)
+
+# 2. Plot with your custom function, passing the log scale!
+data_processing.plot_multiple_series(
+    [hcs_series, ccs_series], 
+    x_label="Compression Ratio (CR)", 
+    y_label="Compression Time (seconds)", 
+    connect_points=True,
+    show_error=True, 
+    y_scale='log',
+    y_max=1000
+)
 
 
 

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from src.visuals.style import apply_axis_style, apply_figure_style, apply_legend_style
 
 
-def plot_compression_time_comparison(
+def plot_time_comparison(
     df: pd.DataFrame,
     compressor_col: str = "compressor",
     compression_time_col: str = "COMP_TIME",
@@ -17,7 +17,7 @@ def plot_compression_time_comparison(
     style: dict | None = None,
 ):
     """
-    Plot compression and decompression time comparison between compressors.
+    Plot compression and recovery time comparison between compressors.
 
     Parameters
     ----------

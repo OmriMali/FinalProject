@@ -1,192 +1,89 @@
+"""
+Hyperspectral image visualization utilities.
+
+This module contains plotting functions for displaying hyperspectral
+images, spectral bands, spectra, histograms, and visual comparisons.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 
 from src.core.hsi import HSI
+from src.visuals.style import (
+    apply_plot_style,
+    get_style_color,
+    get_style_value,
+)
 
 
-def get_band_image(hsi: HSI, band: int,
-    percentile: tuple[float, float] = (2, 98),
-) -> np.ndarray:
+def plot_rgb(
+    hsi: HSI,
+    bands: tuple[int, int, int] | None = None,
+    targets: tuple[float, float, float] = (650, 550, 450),
+    stretch: bool = True,
+    percentiles: tuple[float, float] = (2, 98),
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    title: str | None = None,
+    show_axis: bool = False,
+):
     """
-    Create a display-ready single-band image from an HSI.
+    Plot an RGB visualization of a hyperspectral image.
 
     Parameters
     ----------
     hsi : HSI
-        Hyperspectral image.
-
-    band : int
-        Band index to display.
-
-    percentile : tuple[float, float], optional
-        Percentile range used for contrast stretching.
-
-    Returns
-    -------
-    np.ndarray
-        2D image with values in ``[0, 1]``.
-    """
-    if not 0 <= band < hsi.bands:
-        raise ValueError(f"Band index {band} out of range for {hsi.bands} bands")
-
-    image = hsi.data[:, :, band].astype(np.float32)
-
-    return _percentile_stretch(image, percentile)
-
-def get_rgb_image(hsi: HSI,
-    bands: tuple[int, int, int] | None = None, 
-    target_wavelengths: tuple[float, float, float] = (650, 550, 450),
-    percentile: tuple[float, float] = (2, 98)
-    ) -> np.ndarray:
-    """
-    Create an RGB image from an HSI.
-
-    Parameters
-    ----------
-    hsi : HSI
-        Hyperspectral image.
+        Hyperspectral image to display.
 
     bands : tuple[int, int, int] | None, optional
-        Band indices used as ``(R, G, B)``. If None, nearest bands to
-        ``target_wavelengths`` are used.
+        Band indices used as RGB channels. If None, nearest bands to
+        `targets` are selected using hsi metadata wavelengths.
 
-    target_wavelengths : tuple[float, float, float], optional
-        Target wavelengths for ``(R, G, B)`` selection.
+    targets : tuple[float, float, float], optional
+        Target wavelengths for RGB band selection, in nanometers.
 
-    percentile : tuple[float, float], optional
-        Percentile range used for per-channel contrast stretching.
+    stretch : bool, optional
+        Whether to apply percentile contrast stretching.
+
+    percentiles : tuple[float, float], optional
+        Lower and upper percentiles used for contrast stretching.
+
+    style : dict | None, optional
+        Plot style dictionary.
+
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    title : str | None, optional
+        Plot title.
+
+    show_axis : bool, optional
+        Whether to show axis ticks and frame.
 
     Returns
     -------
-    np.ndarray
-        RGB image with shape ``(H, W, 3)`` and values in ``[0, 1]``.
+    fig, ax
+        Matplotlib figure and axis.
     """
     if bands is None:
-        wavelengths = hsi.metadata.wavelengths
+        bands = select_rgb_bands(hsi, targets=targets)
 
-        bands = tuple(
-            _nearest_band(wavelengths, target)
-            for target in target_wavelengths
-        )
+    _validate_band_indices(hsi, bands)
 
-    rgb = hsi.data[:, :, bands].astype(np.float32)
+    rgb = hsi.data[:, :, list(bands)]
 
-    for channel in range(3):
-        rgb[:, :, channel] = _percentile_stretch(
-            rgb[:, :, channel],
-            percentile,
-        )
-
-    return rgb
-
-
-def show_band(hsi: HSI, band: int,
-    percentile: tuple[float, float] = (2, 98),
-    title: str | None = None,
-    ax=None,
-    cmap: str = "gray",
-    show_axis: bool = False,
-):
-    """
-    Display a single spectral band of an HSI.
-
-    Parameters
-    ----------
-    hsi : HSI
-        Hyperspectral image.
-
-    band : int
-        Band index to display.
-
-    percentile : tuple[float, float], optional
-        Percentile range used for contrast stretching.
-
-    title : str | None, optional
-        Plot title.
-
-    ax : matplotlib.axes.Axes | None, optional
-        Existing axis to draw on.
-
-    cmap : str, optional
-        Matplotlib colormap.
-
-    show_axis : bool, optional
-        If False, hide image axes.
-
-    Returns
-    -------
-    matplotlib.axes.Axes
-        Axis containing the displayed image.
-    """
+    if stretch:
+        rgb = percentile_stretch(rgb, percentiles=percentiles)
 
     if ax is None:
-        _, ax = plt.subplots()
-
-    image = get_band_image(
-        hsi=hsi,
-        band=band,
-        percentile=percentile,
-    )
-
-    ax.imshow(image, cmap=cmap, vmin=0.0, vmax=1.0)
-
-    if title is not None:
-        ax.set_title(title)
-
-    if not show_axis:
-        ax.axis("off")
-
-    return ax
-
-def show_rgb(hsi: HSI,
-    bands: tuple[int, int, int] | None = None,
-    target_wavelengths: tuple[float, float, float] = (650, 550, 450),
-    percentile: tuple[float, float] = (2, 98),
-    title: str | None = None,
-    ax=None,
-    show_axis: bool = False,
-):
-    """
-    Display an RGB rendering of an HSI.
-
-    Parameters
-    ----------
-    hsi : HSI
-        Hyperspectral image.
-
-    bands : tuple[int, int, int] | None, optional
-        Band indices used as ``(R, G, B)``.
-
-    target_wavelengths : tuple[float, float, float], optional
-        Target wavelengths used when ``bands`` is None.
-
-    percentile : tuple[float, float], optional
-        Percentile range used for contrast stretching.
-
-    title : str | None, optional
-        Plot title.
-
-    ax : matplotlib.axes.Axes | None, optional
-        Existing axis to draw on. If None, a new figure and axis are created.
-
-    show_axis : bool, optional
-        If False, hide image axes.
-
-    Returns
-    -------
-    matplotlib.axes.Axes
-        Axis containing the displayed image.
-    """
-
-    if ax is None:
-        _, ax = plt.subplots()
-
-    rgb = get_rgb_image(
-        hsi=hsi,
-        bands=bands,
-        target_wavelengths=target_wavelengths,
-        percentile=percentile,
-    )
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
 
     ax.imshow(rgb)
 
@@ -194,219 +91,566 @@ def show_rgb(hsi: HSI,
         ax.set_title(title)
 
     if not show_axis:
-        ax.axis("off")
+        ax.set_axis_off()
 
-    return ax
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
 
 
-def compare_rgb(hsis: list[HSI],
-    labels: list[str] | None = None,
-    bands: tuple[int, int, int] | None = None,
-    target_wavelengths: tuple[float, float, float] = (650, 550, 450),
-    percentile: tuple[float, float] = (2, 98),
-    figsize: tuple[float, float] | None = None,
+def plot_band(
+    hsi: HSI,
+    band: int,
+    stretch: bool = True,
+    percentiles: tuple[float, float] = (2, 98),
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    title: str | None = None,
+    show_axis: bool = False,
+    colorbar: bool = False,
 ):
     """
-    Display RGB renderings of multiple HSIs side by side.
+    Plot a single spectral band.
 
     Parameters
     ----------
-    hsis : list[HSI]
-        Hyperspectral images to compare.
-
-    labels : list[str] | None, optional
-        Titles for each image.
-
-    bands : tuple[int, int, int] | None, optional
-        Band indices used as ``(R, G, B)``.
-
-    target_wavelengths : tuple[float, float, float], optional
-        Target wavelengths used when ``bands`` is None.
-
-    percentile : tuple[float, float], optional
-        Percentile range used for contrast stretching.
-
-    figsize : tuple[float, float] | None, optional
-        Matplotlib figure size.
-
-    Returns
-    -------
-    tuple
-        ``(fig, axes)``.
-    """
-
-    if labels is not None and len(labels) != len(hsis):
-        raise ValueError("labels and hsis must have the same length")
-
-    n = len(hsis)
-
-    if figsize is None:
-        figsize = (5 * n, 5)
-
-    fig, axes = plt.subplots(1, n, figsize=figsize)
-
-    if n == 1:
-        axes = [axes]
-
-    for i, hsi in enumerate(hsis):
-        title = labels[i] if labels is not None else None
-
-        show_rgb(
-            hsi=hsi,
-            bands=bands,
-            target_wavelengths=target_wavelengths,
-            percentile=percentile,
-            title=title,
-            ax=axes[i],
-        )
-
-    fig.tight_layout()
-
-    return fig, axes
-
-def compare_band(hsis: list[HSI], band: int,
-    labels: list[str] | None = None,
-    percentile: tuple[float, float] = (2, 98),
-    cmap: str = "gray",
-    figsize: tuple[float, float] | None = None,
-):
-    """
-    Display the same spectral band from multiple HSIs side by side.
-
-    Parameters
-    ----------
-    hsis : list[HSI]
-        Hyperspectral images to compare.
+    hsi : HSI
+        Hyperspectral image to display.
 
     band : int
-        Band index to display.
+        Band index to plot.
 
-    labels : list[str] | None, optional
-        Titles for each image.
+    stretch : bool, optional
+        Whether to apply percentile contrast stretching.
 
-    percentile : tuple[float, float], optional
-        Percentile range used for contrast stretching.
+    percentiles : tuple[float, float], optional
+        Lower and upper percentiles used for contrast stretching.
 
-    cmap : str, optional
-        Matplotlib colormap.
+    style : dict | None, optional
+        Plot style dictionary.
 
-    figsize : tuple[float, float] | None, optional
-        Matplotlib figure size.
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    title : str | None, optional
+        Plot title.
+
+    show_axis : bool, optional
+        Whether to show axis ticks and frame.
+
+    colorbar : bool, optional
+        Whether to add a colorbar.
 
     Returns
     -------
-    tuple
-        ``(fig, axes)``.
+    fig, ax
+        Matplotlib figure and axis.
     """
+    _validate_band_indices(hsi, [band])
 
-    if labels is not None and len(labels) != len(hsis):
-        raise ValueError("labels and hsis must have the same length")
+    image = hsi.data[:, :, band]
 
-    n = len(hsis)
+    if stretch:
+        image = percentile_stretch(image, percentiles=percentiles)
 
-    if figsize is None:
-        figsize = (5 * n, 5)
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
 
-    fig, axes = plt.subplots(1, n, figsize=figsize)
+    cmap = get_style_value(style, "cmap", "gray")
+    im = ax.imshow(image, cmap=cmap)
 
-    if n == 1:
-        axes = [axes]
+    if title is None:
+        title = f"Band {band}"
+    ax.set_title(title)
 
-    for i, hsi in enumerate(hsis):
-        title = labels[i] if labels is not None else None
+    if not show_axis:
+        ax.set_axis_off()
 
-        show_band(
-            hsi=hsi,
-            band=band,
-            percentile=percentile,
-            title=title,
-            ax=axes[i],
-            cmap=cmap,
+    if colorbar:
+        fig.colorbar(im, ax=ax)
+
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
+
+
+def plot_spectrum(
+    hsi: HSI,
+    pixel: tuple[int, int],
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    label: str | None = None,
+    title: str | None = None,
+    show_legend: bool = True,
+):
+    """
+    Plot the spectrum of a single pixel.
+
+    Parameters
+    ----------
+    hsi : HSI
+        Hyperspectral image.
+
+    pixel : tuple[int, int]
+        Pixel coordinate as (x, y).
+
+    style : dict | None, optional
+        Plot style dictionary.
+
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    label : str | None, optional
+        Curve label.
+
+    title : str | None, optional
+        Plot title.
+
+    show_legend : bool, optional
+        Whether to show a legend when label is provided.
+
+    Returns
+    -------
+    fig, ax
+        Matplotlib figure and axis.
+    """
+    x, y = pixel
+    _validate_pixel(hsi, x=x, y=y)
+
+    spectrum = hsi.data[y, x, :]
+    x_axis = _spectral_axis(hsi)
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
+
+    color = get_style_color(label, style, default=None) if label else None
+    line_width = get_style_value(style, "line_width", 1.8)
+
+    ax.plot(
+        x_axis,
+        spectrum,
+        label=label,
+        color=color,
+        linewidth=line_width,
+    )
+
+    ax.set_xlabel(_spectral_axis_label(hsi))
+    ax.set_ylabel("Intensity")
+
+    if title is not None:
+        ax.set_title(title)
+
+    if label is not None and show_legend:
+        ax.legend()
+
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
+
+
+def compare_rgb(
+    hsis: list[HSI],
+    labels: list[str],
+    bands: tuple[int, int, int] | None = None,
+    targets: tuple[float, float, float] = (650, 550, 450),
+    stretch: bool = True,
+    percentiles: tuple[float, float] = (2, 98),
+    metrics: dict[str, dict[str, float]] | None = None,
+    style: dict[str, Any] | None = None,
+    title: str | None = None,
+    figsize: tuple[float, float] | None = None,
+):
+    """
+    Compare RGB visualizations of multiple hyperspectral images.
+
+    Parameters
+    ----------
+    hsis : list[HSI]
+        Hyperspectral images to display.
+
+    labels : list[str]
+        Labels corresponding to each HSI.
+
+    bands : tuple[int, int, int] | None, optional
+        Band indices used as RGB channels. If None, bands are selected
+        using the first HSI wavelengths.
+
+    targets : tuple[float, float, float], optional
+        Target wavelengths for RGB band selection, in nanometers.
+
+    stretch : bool, optional
+        Whether to apply percentile contrast stretching.
+
+    percentiles : tuple[float, float], optional
+        Lower and upper percentiles used for contrast stretching.
+
+    metrics : dict[str, dict[str, float]] | None, optional
+        Optional mapping from label to metric names and values.
+
+    style : dict | None, optional
+        Plot style dictionary.
+
+    title : str | None, optional
+        Figure title.
+
+    figsize : tuple[float, float] | None, optional
+        Figure size.
+
+    Returns
+    -------
+    fig, axes
+        Matplotlib figure and axes.
+    """
+    _validate_matching_lengths(hsis, labels)
+
+    if bands is None:
+        bands = select_rgb_bands(hsis[0], targets=targets)
+
+    n_images = len(hsis)
+
+    fig, axes = plt.subplots(
+        1,
+        n_images,
+        figsize=figsize,
+        squeeze=False,
+    )
+    axes = axes.ravel()
+
+    for ax, hsi, label in zip(axes, hsis, labels):
+        plot_rgb(
+            hsi,
+            bands=bands,
+            stretch=stretch,
+            percentiles=percentiles,
+            style=style,
+            ax=ax,
+            title=_format_title_with_metrics(label, metrics),
+            show_axis=False,
         )
 
-    fig.tight_layout()
+    if title is not None:
+        fig.suptitle(title)
+
+    apply_plot_style(fig, axes, style)
 
     return fig, axes
 
 
-def annotate_text(
-    ax,
-    text: str,
-    loc: str = "upper left",
-    fontsize: int = 10,
-    alpha: float = 0.75,
+def compare_spectra(
+    hsis: list[HSI],
+    labels: list[str],
+    pixel: tuple[int, int],
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    title: str | None = None,
+    show_legend: bool = True,
 ):
     """
-    Add a text annotation box to an image axis.
+    Compare spectra from multiple hyperspectral images at one pixel.
 
     Parameters
     ----------
-    ax : matplotlib.axes.Axes
-        Axis to annotate.
+    hsis : list[HSI]
+        Hyperspectral images.
 
-    text : str
-        Text to display.
+    labels : list[str]
+        Labels corresponding to each HSI.
 
-    loc : str, optional
-        Location of annotation. Supported: ``"upper left"``,
-        ``"upper right"``, ``"lower left"``, ``"lower right"``.
+    pixel : tuple[int, int]
+        Pixel coordinate as (x, y).
 
-    fontsize : int, optional
-        Text font size.
+    style : dict | None, optional
+        Plot style dictionary.
 
-    alpha : float, optional
-        Background box opacity.
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    title : str | None, optional
+        Plot title.
+
+    show_legend : bool, optional
+        Whether to show a legend.
 
     Returns
     -------
-    matplotlib.text.Text
-        Created text object.
+    fig, ax
+        Matplotlib figure and axis.
     """
+    _validate_matching_lengths(hsis, labels)
 
-    locations = {
-        "upper left": (0.02, 0.98, "left", "top"),
-        "upper right": (0.98, 0.98, "right", "top"),
-        "lower left": (0.02, 0.02, "left", "bottom"),
-        "lower right": (0.98, 0.02, "right", "bottom"),
-    }
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
 
-    if loc not in locations:
-        raise ValueError(f"Unsupported loc: {loc}")
+    for hsi, label in zip(hsis, labels):
+        x, y = pixel
+        _validate_pixel(hsi, x=x, y=y)
 
-    x, y, ha, va = locations[loc]
+        spectrum = hsi.data[y, x, :]
+        x_axis = _spectral_axis(hsi)
 
-    return ax.text(
-        x,
-        y,
-        text,
-        transform=ax.transAxes,
-        ha=ha,
-        va=va,
-        fontsize=fontsize,
-        bbox={
-            "facecolor": "white",
-            "alpha": alpha,
-            "edgecolor": "none",
-        },
+        color = get_style_color(label, style, default=None)
+        line_width = get_style_value(style, "line_width", 1.8)
+
+        ax.plot(
+            x_axis,
+            spectrum,
+            label=label,
+            color=color,
+            linewidth=line_width,
+        )
+
+    ax.set_xlabel(_spectral_axis_label(hsis[0]))
+    ax.set_ylabel("Intensity")
+
+    if title is None:
+        title = f"Spectrum at pixel ({pixel[0]}, {pixel[1]})"
+    ax.set_title(title)
+
+    if show_legend:
+        ax.legend()
+
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
+
+
+def plot_histogram(
+    hsi: HSI,
+    band: int | None = None,
+    bins: int = 256,
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    title: str | None = None,
+):
+    """
+    Plot a histogram of HSI values.
+
+    Parameters
+    ----------
+    hsi : HSI
+        Hyperspectral image.
+
+    band : int | None, optional
+        Band index. If None, all values in the cube are used.
+
+    bins : int, optional
+        Number of histogram bins.
+
+    style : dict | None, optional
+        Plot style dictionary.
+
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    title : str | None, optional
+        Plot title.
+
+    Returns
+    -------
+    fig, ax
+        Matplotlib figure and axis.
+    """
+    if band is None:
+        values = hsi.data.ravel()
+    else:
+        _validate_band_indices(hsi, [band])
+        values = hsi.data[:, :, band].ravel()
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
+
+    ax.hist(values, bins=bins)
+
+    ax.set_xlabel("Value")
+    ax.set_ylabel("Count")
+
+    if title is None:
+        title = "HSI Histogram" if band is None else f"Band {band} Histogram"
+    ax.set_title(title)
+
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
+
+
+def select_rgb_bands(
+    hsi: HSI,
+    targets: tuple[float, float, float] = (650, 550, 450),
+) -> tuple[int, int, int]:
+    """
+    Select RGB band indices by nearest wavelength.
+
+    Parameters
+    ----------
+    hsi : HSI
+        Hyperspectral image.
+
+    targets : tuple[float, float, float], optional
+        Target wavelengths for red, green, and blue, in nanometers.
+
+    Returns
+    -------
+    tuple[int, int, int]
+        Selected band indices.
+    """
+    wavelengths = hsi.metadata.wavelengths
+
+    return tuple(
+        int(np.argmin(np.abs(wavelengths - target)))
+        for target in targets
     )
 
 
-def _nearest_band(wavelengths: np.ndarray, target: float) -> int:
+def percentile_stretch(
+    image: np.ndarray,
+    percentiles: tuple[float, float] = (2, 98),
+) -> np.ndarray:
     """
-    Find the band index nearest to a target wavelength.
-    """
-    return int(np.argmin(np.abs(wavelengths - target)))
+    Apply percentile contrast stretching.
 
-def _percentile_stretch(channel: np.ndarray, percentile: tuple[float, float]) -> np.ndarray:
-    """
-    Stretch an image channel to ``[0, 1]`` using percentiles.
-    """
+    Parameters
+    ----------
+    image : np.ndarray
+        Input 2D or 3D image.
 
-    low, high = np.percentile(channel, percentile)
+    percentiles : tuple[float, float], optional
+        Lower and upper percentiles.
 
+    Returns
+    -------
+    np.ndarray
+        Stretched image in the range [0, 1].
+    """
+    image = image.astype(np.float32)
+
+    if image.ndim == 2:
+        low, high = np.percentile(image, percentiles)
+        return _normalize_to_unit_interval(image, low, high)
+
+    if image.ndim == 3:
+        stretched = np.empty_like(image, dtype=np.float32)
+
+        for channel in range(image.shape[2]):
+            low, high = np.percentile(image[:, :, channel], percentiles)
+            stretched[:, :, channel] = _normalize_to_unit_interval(
+                image[:, :, channel],
+                low,
+                high,
+            )
+
+        return stretched
+
+    raise ValueError("Image must be 2D or 3D")
+
+
+def _normalize_to_unit_interval(
+    image: np.ndarray,
+    low: float,
+    high: float,
+) -> np.ndarray:
+    """
+    Normalize image values to [0, 1] using given bounds.
+    """
     if high <= low:
-        return np.zeros_like(channel, dtype=np.float32)
+        return np.zeros_like(image, dtype=np.float32)
 
-    stretched = (channel - low) / (high - low)
+    normalized = (image - low) / (high - low)
+    return np.clip(normalized, 0, 1)
 
-    return np.clip(stretched, 0.0, 1.0)
+
+def _spectral_axis(hsi: HSI) -> np.ndarray:
+    """
+    Return spectral axis values.
+    """
+    wavelengths = hsi.metadata.wavelengths
+
+    if wavelengths is None:
+        return np.arange(hsi.bands)
+
+    return wavelengths
+
+
+def _spectral_axis_label(hsi: HSI) -> str:
+    """
+    Return spectral axis label.
+    """
+    if hsi.metadata.wavelengths is None:
+        return "Band"
+
+    return "Wavelength [nm]"
+
+
+def _validate_band_indices(
+    hsi: HSI,
+    bands,
+) -> None:
+    """
+    Validate that band indices are inside the HSI band range.
+    """
+    for band in bands:
+        if not 0 <= band < hsi.bands:
+            raise ValueError(
+                f"Band index {band} is out of range for "
+                f"{hsi.bands} bands"
+            )
+
+
+def _validate_pixel(
+    hsi: HSI,
+    x: int,
+    y: int,
+) -> None:
+    """
+    Validate that a pixel coordinate is inside image bounds.
+    """
+    height, width = hsi.spatial_shape
+
+    if not 0 <= x < width:
+        raise ValueError(
+            f"x={x} is out of range for image width {width}"
+        )
+
+    if not 0 <= y < height:
+        raise ValueError(
+            f"y={y} is out of range for image height {height}"
+        )
+
+
+def _validate_matching_lengths(
+    hsis: list[HSI],
+    labels: list[str],
+) -> None:
+    """
+    Validate that HSI and label lists have matching lengths.
+    """
+    if len(hsis) != len(labels):
+        raise ValueError("hsis and labels must have the same length")
+
+    if len(hsis) == 0:
+        raise ValueError("At least one HSI must be provided")
+
+
+def _format_title_with_metrics(
+    label: str,
+    metrics: dict[str, dict[str, float]] | None = None,
+) -> str:
+    """
+    Format image title with optional metrics.
+    """
+    if metrics is None or label not in metrics:
+        return label
+
+    metric_text = ", ".join(
+        f"{name}: {value:.3g}"
+        for name, value in metrics[label].items()
+    )
+
+    return f"{label}\n{metric_text}"

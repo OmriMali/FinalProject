@@ -14,13 +14,13 @@ def main():
     save_reconstructed = True
     save_compressed = False
 
-    tags = None
+    tags = None 
 
     # ===== Paths =====
     hsi_dir = r"data\processed\JasperRidge\sections"
     hsi_name = "JasperRidge_r1_c1"
 
-    dict_dir = r"results\artifacts\dictionary\2026-05-16T16_18_40_ksvd_ksvd"
+    dict_dir = r"C:\Users\omrim\Documents\FinalProject\results\artifacts\dictionary\2026-05-23T20_53_57_ksvd_ksvd"
     dict_name = r"dictionary"
     learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
 

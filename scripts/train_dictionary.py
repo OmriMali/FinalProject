@@ -9,18 +9,16 @@ def main():
 
     # ===== Run info ====
     trainer_name = "ksvd"           # "ksvd"
+    experiment = "test"
 
     save_dictionary = True
     save_coefficients = False
-
-    tags = None
 
     # ===== Paths =====
     signals_dir = r"data\training"
     signals_name = "sampled_JasperRidge_r1_c1"
 
-    artifacts_dir = r"results/artifacts"
-    log_dir = r"results/logs"
+    results_dir = "results"
 
     # ===== Configs =====
     configs = {
@@ -43,17 +41,17 @@ def main():
     runner = Runner(
         callbacks=[
             ArtifactLoggerCallback(
-                root_dir=artifacts_dir,
+                results_dir=results_dir,
                 save_dictionary=save_dictionary,
                 save_coefficients=save_coefficients,
             ),
             CSVLoggerCallback(
-                log_dir=log_dir
+                results_dir=results_dir
             ),
             ConsoleCallback()
         ]
     )
-    runner.run_dictionary_training(signals, trainer, tags=tags)
+    runner.run_dictionary_training(signals, trainer, experiment=experiment)
 
 
 if __name__ == "__main__":

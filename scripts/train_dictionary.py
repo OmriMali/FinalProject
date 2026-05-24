@@ -15,7 +15,8 @@ def main():
     save_coefficients = False
 
     # ===== Paths =====
-    signals_dir = r"data\training"
+    # signals_dir = r"data\training"
+    signals_dir = r"data\processed\train"
     signals_name = "sampled_JasperRidge_r1_c1"
 
     results_dir = "results"
@@ -31,8 +32,15 @@ def main():
     }
 
     # ===== Load signals =====
-    signals = io.load_training_signals(signals_dir, signals_name)
-        
+    # signals = io.load_training_signals(signals_dir, signals_name)
+    signals = io.load_diverse_signals_library(
+        folder_path=signals_dir,
+        name=signals_name,
+        threshold=0.995,
+        max_atoms=configs[trainer_name].K * 10,
+        seed=42
+    )
+
     # ===== Build trainer =====
     obj = dictionary_trainers.registry.get_dictionary_trainer(trainer_name)
     trainer = obj(configs[trainer_name])

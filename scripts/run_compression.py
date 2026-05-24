@@ -10,19 +10,19 @@ def main():
 
     # ===== Run info =====
     compressor_name = "hcs1d"           # "hcs1d", "hcs3d", "ccsds123"
-    experiment = "test"
-    ber = 0.0
+    experiment = "ber_test"
+    ber = 0.0001
     tags = None
 
     save_reconstructed = True
     save_compressed = False
 
     # ===== Paths =====
-    hsi_dir = r"data\processed\JasperRidge\sections"
+    hsi_dir = r"data\sections\JasperRidge"
     hsi_name = "JasperRidge_r1_c1"
 
-    dict_dir = r"results\dictionary_training\ksvd\artifacts\ksvd\ksvd_test_20260524_000209"
-    dict_name = r"dictionary"
+    dict_dir = r"resources\dictionaries"
+    dict_name = r"jasper_ridge_split_01_ksvd_400_atoms.npz"
     learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
 
     results_dir = r"results"
@@ -74,7 +74,7 @@ def main():
         ]
     )
 
-    runner.run_compression(hsi, compressor, experiment, ber, tags=tags)
+    runner.run_compression(hsi, compressor, experiment, ber=ber, tags=tags)
 
     
 

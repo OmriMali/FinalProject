@@ -30,12 +30,13 @@ def main():
         # "hcs3d",
         "ccsds123",
     ]
+    experiment = "Test1"
+    ber = 0.0
+    tags = None
     
     save_reconstructed = False
     save_compressed = False
-
-    tags = {"experiment_group": "poster_1"}
-
+    
     # ===== Paths =====
     hsi_dir = r"data\processed\JasperRidge\size_sweep"
     hsi_name = "JasperRidge_h_128_w_128"
@@ -44,8 +45,7 @@ def main():
     dict_name = "dictionary"
     learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
 
-    artifacts_dir = r"results/artifacts"
-    log_dir = r"results/logs"
+    results_dir = r"results"
 
     # ===== Load HSI =====
     hsi = io.load_hsi(hsi_dir, hsi_name)
@@ -54,11 +54,13 @@ def main():
     runner = Runner(
         callbacks=[
             ArtifactLoggerCallback(
-                root_dir=artifacts_dir,
+                results_dir=results_dir,
                 save_reconstructed=save_reconstructed,
                 save_compressed=save_compressed,
+                save_config=True,
+                save_metadata=False
             ),
-            CSVLoggerCallback(log_dir=log_dir),
+            CSVLoggerCallback(results_dir=results_dir),
             ConsoleCallback(),
         ]
     )
@@ -122,7 +124,8 @@ def main():
             runner.run_compression(
                 hsi=hsi,
                 compressor=compressor,
-                tags=tags
+                experiment=experiment,
+                ber=ber
             )
 
 

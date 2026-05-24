@@ -16,6 +16,7 @@ def main():
     # ===== Paths =====
     raw_dir = r"data\raw"
     processed_dir = r"data\processed"
+    sections_dir = r"data\sections"
     
     # ===== Scenes =====
     scenes = ["JasperRidge",
@@ -40,7 +41,7 @@ def main():
         if crop_to_sections:
             sections = crop_hsi_sections(hsi, section_size)
             for sec in sections:
-                io.save_hsi(sec, fr"{processed_dir}\{scene}\sections", f"{scene}_r{sec.metadata.section_row}_c{sec.metadata.section_col}")
+                io.save_hsi(sec, fr"{sections_dir}\{scene}", f"{scene}_r{sec.metadata.section_row}_c{sec.metadata.section_col}")
 
         
 if __name__ == "__main__":

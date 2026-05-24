@@ -75,4 +75,7 @@ def _load_single_training_signals(path: str | Path) -> TrainingSignals:
         for source in payload["sources"]
     ]
 
+    return TrainingSignals(**payload)
+
+
     

@@ -18,6 +18,8 @@ from src.pipeline.progress import RunProgress
 from src.pipeline.callbacks import RunnerCallback
 from src.pipeline.serialization import config_to_row
 
+from src.utils.misc import add_bit_noise
+
 
 
 class Runner:
@@ -127,6 +129,11 @@ class Runner:
         compressed = compressor.compress(hsi)
         compression_time = perf_counter() - start
 
+        bitstream = compressed.bitstream
+        mask = compressed.side_information.get("protection_mask")
+        noised_bitstream = add_bit_noise(bitstream, ber, mask)
+        replace(compressed, bitstream=noised_bitstream)
+        
         compressor._progress_callback = self._make_progress_callback("decompression")
         start = perf_counter()
         reconstructed = compressor.decompress(compressed)

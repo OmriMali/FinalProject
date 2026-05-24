@@ -1,17 +1,15 @@
-# --- Data ------
+# --- Project ---
 data/
-raw/
-
-results/*
-!results/dictionaries/
-!results/artifacts/
-results/artifacts/*
-!results/artifacts/dictionary/
-!results/artifacts/dictionary/**
-
-# --- additionals ---
+results/
 main.py
 sandbox.py
+
+!resources/
+!src/
+!scripts/
+!README.md
+!requirements.txt
+!.gitignore
 
 # --- Python Environment ---
 __pycache__/
@@ -27,5 +25,3 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
-
-# --- Logs and Results ---

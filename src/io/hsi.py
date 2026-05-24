@@ -2,6 +2,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from src.core.hsi import HSI, HSIMetadata
 from src.io.common import make_npz_path, resolve_npz_path, list_npz_files
@@ -81,6 +82,42 @@ def load_many_hsi(directory: str | Path) -> list[HSI]:
             hsis.append(_load_single_hsi(path))
         except ValueError:
             continue
+
+    return hsis
+
+
+def load_hsi_split(split_csv: str | Path, split: str) -> list[HSI]:
+    """
+    Load HSI sections belonging to a given split.
+
+    Parameters
+    ----------
+    split_csv : str | Path
+        Path to a split CSV file created by ``create_section_split_csv``.
+
+    split : str
+        Split name to load, for example ``"train"`` or ``"test"``.
+
+    Returns
+    -------
+    list[HSI]
+        Loaded HSI objects belonging to the requested split.
+    """
+
+    df = pd.read_csv(split_csv)
+
+    required_columns = {"section_path", "split"}
+
+    missing = required_columns - set(df.columns)
+    if missing:
+        raise ValueError(f"Split CSV is missing columns: {missing}")
+
+    selected = df[df["split"] == split]
+
+    hsis = []
+
+    for section_path in selected["section_path"]:
+        hsis.append(_load_single_hsi(section_path))
 
     return hsis
 

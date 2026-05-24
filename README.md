@@ -7,6 +7,165 @@ data analysis functions.
 
 ---
 
+## Directory Structure
+
+```text
+project/
+├── data/
+│   ├── raw/
+│   │   └── <dataset>/
+│   │       └── Raw AVIRIS / hyperspectral files
+│   │
+│   ├── processed/
+│   │   └── <dataset>/
+│   │       └── <dataset>.npz
+│   │
+│   ├── sections/
+│   │   └── <dataset>/
+│   │       ├── <dataset>_r1_c1.npz
+│   │       ├── <dataset>_r1_c2.npz
+│   │       └── ...
+│   │
+│   └── training_signals/
+│       └── *.npz
+│
+├── resources/
+│   ├── dictionaries/
+│   │   └── Shared tracked dictionaries
+│   │
+│   └── splits/
+│       └── Train/test split CSV files
+│
+├── results/
+│   ├── compression/
+│   │   └── compressor/
+│   │       ├── artifacts/
+|   |       │   └── <scene>_<experiment>_<timestamp>/
+│   │       │        ├── reconstructed.npz
+│   │       │        ├── compressed.npz
+│   │       │        └── config.json
+|   |       │
+│   │       └── log.csv
+│   │
+│   └── dictionary_training/
+│       └── algorithm/
+│           ├── artifacts/
+|           │   └── <algorithm>_<experiment>_<timestamp>/
+│           │        ├── dictionary.npz
+│           │        ├── coefficients.npz
+│           │        └── config.json
+│           │
+│           └── log.csv
+│
+├── scripts/
+│   ├── preprocess_aviris.py
+│   ├── create_split.py
+│   ├── create_training_signals.py
+│   ├── train_dictionary.py
+│   ├── run_compression.py
+│   └── ...
+│
+├── src/
+│   ├── compressors/
+│   ├── core/
+│   ├── datasets/
+│   ├── dictionary_trainers/
+│   ├── io/
+│   ├── loggers/
+│   ├── metrics/
+│   ├── pipeline/
+│   ├── preprocessing/
+│   ├── ui/
+│   ├── utils/
+│   └── visuals/
+│
+├── README.md
+├── requirements.txt
+└── .gitignore
+```
+
+### `data/`
+
+Contains generated and intermediate dataset files.
+
+* `raw/`
+  Original downloaded hyperspectral datasets.
+
+* `processed/`
+  Fully processed HSI cubes after trimming/filtering.
+
+* `sections/`
+  Spatial crops extracted from processed HSIs.
+
+* `training_signals/`
+  Saved `TrainingSignals` objects used for dictionary learning.
+
+These files are typically **not tracked by Git**.
+
+---
+
+### `resources/`
+
+Contains shared reusable project assets.
+
+* `dictionaries/`
+  Curated dictionaries intended to be shared between collaborators.
+
+* `splits/`
+  CSV files defining reproducible train/test section splits.
+
+These files are typically **tracked by Git**.
+
+---
+
+### `results/`
+
+Contains experiment outputs.
+
+* `compression/`
+  Compression experiment logs and artifacts.
+
+* `dictionary_training/`
+  Dictionary training logs and artifacts.
+
+Artifacts are timestamped and grouped by experiment.
+
+These files are typically **not tracked by Git**.
+
+---
+
+### `scripts/`
+
+Thin executable workflows.
+
+Scripts should orchestrate the framework but avoid implementing core logic.
+
+Examples:
+
+* preprocessing datasets
+* creating train/test splits
+* training dictionaries
+* running compression experiments
+
+---
+
+### `src/`
+
+Core framework source code.
+
+Organized by functionality:
+
+* compressors
+* preprocessing
+* logging
+* visualization
+* metrics
+* IO
+* experiment pipeline
+* etc.
+
+---
+
 ## Core Data Objects
 
 ### `HSI`

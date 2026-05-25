@@ -5,6 +5,7 @@ def aggregate_mean_std(
     df: pd.DataFrame,
     group_cols: list[str],
     value_cols: list[str],
+    dropna_groups: bool = False,
 ) -> pd.DataFrame:
     """
     Aggregate selected value columns by mean and standard deviation.
@@ -20,6 +21,11 @@ def aggregate_mean_std(
     value_cols : list[str]
         Numeric columns to aggregate.
 
+    dropna_groups : bool, optional
+        If False, keep groups where some grouping columns are NaN.
+        This is useful when comparing different algorithms with different
+        parameter columns.
+
     Returns
     -------
     pd.DataFrame
@@ -29,7 +35,10 @@ def aggregate_mean_std(
     _validate_columns(df, group_cols + value_cols)
 
     grouped = (
-        df.groupby(group_cols)[value_cols]
+        df.groupby(
+            group_cols,
+            dropna=dropna_groups,
+        )[value_cols]
         .agg(["mean", "std"])
         .reset_index()
     )

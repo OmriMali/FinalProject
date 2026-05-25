@@ -9,9 +9,9 @@ from src.loggers.artifacts import ArtifactLoggerCallback
 def main():
 
     # ===== Run info =====
-    compressor_name = "hcs1d"           # "hcs1d", "hcs3d", "ccsds123"
-    experiment = "ber_test"
-    ber = 0.0001
+    compressor_name = "hybrid"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
+    experiment = "hybrid_test"
+    ber = 0.0
     tags = None
 
     save_reconstructed = True
@@ -49,6 +49,16 @@ def main():
             a=100,
             block_size=32,
         ),
+        "hybrid": compressors.HybridConfig(
+            K=3,
+            sr=0.1,
+            Psi=learned_base,
+            local_sum_mode="column",
+            Omega=8,
+            a=0,
+            block_size=32,
+            protect_bitstream=False
+        )
     }
 
     # ===== Load HSI =====

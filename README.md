@@ -59,7 +59,7 @@ project/
 │
 ├── scripts/
 │   ├── preprocess_aviris.py
-│   ├── create_split.py
+│   ├── train_test_split.py
 │   ├── create_training_signals.py
 │   ├── train_dictionary.py
 │   ├── run_compression.py
@@ -68,13 +68,14 @@ project/
 ├── src/
 │   ├── compressors/
 │   ├── core/
-│   ├── datasets/
+│   ├── data_processing/
 │   ├── dictionary_trainers/
 │   ├── io/
 │   ├── loggers/
 │   ├── metrics/
 │   ├── pipeline/
 │   ├── preprocessing/
+│   ├── transforms/
 │   ├── ui/
 │   ├── utils/
 │   └── visuals/

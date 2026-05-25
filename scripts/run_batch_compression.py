@@ -30,7 +30,7 @@ def main():
         # "hcs3d",
         "ccsds123",
     ]
-    experiment = "Test1"
+    experiment = "data_processing_test"
     ber = 0.0
     tags = None
     
@@ -38,12 +38,11 @@ def main():
     save_compressed = False
     
     # ===== Paths =====
-    hsi_dir = r"data\processed\JasperRidge\size_sweep"
-    hsi_name = "JasperRidge_h_128_w_128"
+    hsi_dir = r"data\sections\JasperRidge"
+    hsi_name = "JasperRidge_r4_c2"
 
-    dict_dir = r"results\artifacts\dictionary\2026-05-16T16_18_40_ksvd_ksvd"
-    dict_name = "dictionary"
-    learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
+    dict_dir = r"resources\dictionaries"
+    dict_name = "jasper_ridge_split_01_ksvd_400_atoms.npz"
 
     results_dir = r"results"
 
@@ -66,6 +65,8 @@ def main():
     )
 
     # ===== Experiment configs =====
+    learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
+
     experiments = {
         "hcs1d": {
             "config_cls": compressors.HCS1DConfig,

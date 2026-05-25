@@ -43,7 +43,8 @@ DEFAULT_STYLE: dict[str, Any] = {
     # Plot defaults
     "line_width": 1.8,
     "marker_size": 6,
-    "errorbar_color": "black",
+    "line_errorbar": None,
+    "bar_errorbar": "black",
     "errorbar_capsize": 3,
 
     # Image defaults
@@ -87,7 +88,8 @@ DARK_STYLE: dict[str, Any] = {
     # Plot defaults
     "line_width": 1.8,
     "marker_size": 6,
-    "errorbar_color": "white",
+    "line_errorbar": None,
+    "bar_errorbar": "white",
     "errorbar_capsize": 3,
 
     # Image defaults

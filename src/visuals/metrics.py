@@ -19,14 +19,14 @@ from src.visuals.style import (
     apply_plot_style,
     get_style_color,
     get_style_value,
+    DEFAULT_STYLE
 )
-
 
 def plot_metric_vs_metric(
     df: pd.DataFrame,
     x: str,
     y: str,
-    group_by: str = "compressor",
+    method_col: str = "method",
     yerr: str | None = None,
     xerr: str | None = None,
     style: dict[str, Any] | None = None,
@@ -35,16 +35,18 @@ def plot_metric_vs_metric(
     xlabel: str | None = None,
     ylabel: str | None = None,
     show_legend: bool = True,
-    marker: str = "o",
-    linestyle: str = "-",
 ):
     """
-    Plot one metric against another, optionally grouped by method.
+    Plot one metric against another for multiple methods.
+
+    This function expects an already-prepared dataframe. If averaging or
+    error bars are needed, they should be computed before calling this
+    function, typically using the data_processing module.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame containing the metric values to plot.
+        DataFrame containing metric values.
 
     x : str
         Column name used for the x-axis.
@@ -52,8 +54,9 @@ def plot_metric_vs_metric(
     y : str
         Column name used for the y-axis.
 
-    group_by : str, optional
-        Column used to split the data into separate traces.
+    method_col : str, optional
+        Column containing method names. Each method is plotted as a
+        separate trace.
 
     yerr : str | None, optional
         Column containing y-axis error values.
@@ -65,35 +68,30 @@ def plot_metric_vs_metric(
         Plot style dictionary.
 
     ax : Axes | None, optional
-        Existing matplotlib axis. If None, a new figure and axis are created.
+        Existing matplotlib axis. If None, a new figure and axis are
+        created.
 
     title : str | None, optional
         Plot title.
 
     xlabel : str | None, optional
-        X-axis label. If None, `x` is used.
+        X-axis label. If None, ``x`` is used.
 
     ylabel : str | None, optional
-        Y-axis label. If None, `y` is used.
+        Y-axis label. If None, ``y`` is used.
 
     show_legend : bool, optional
         Whether to show a legend.
-
-    marker : str, optional
-        Marker style.
-
-    linestyle : str, optional
-        Line style.
 
     Returns
     -------
     fig, ax
         Matplotlib figure and axis.
     """
-    required_columns = [x, y]
 
-    if group_by is not None:
-        required_columns.append(group_by)
+    style = style or DEFAULT_STYLE
+
+    required_columns = [method_col, x, y]
 
     if yerr is not None:
         required_columns.append(yerr)
@@ -110,19 +108,16 @@ def plot_metric_vs_metric(
 
     line_width = get_style_value(style, "line_width", 1.8)
     marker_size = get_style_value(style, "marker_size", 6)
+    marker = get_style_value(style, "marker", "o")
+    linestyle = get_style_value(style, "linestyle", "-")
     errorbar_capsize = get_style_value(style, "errorbar_capsize", 3)
-    errorbar_color = get_style_value(style, "errorbar_color", None)
+    errorbar_color = get_style_value(style, "line_errorbar", None)
 
-    if group_by is None:
-        groups = [(None, df)]
-    else:
-        groups = df.groupby(group_by)
-
-    for label, group in groups:
+    for method, group in df.groupby(method_col):
+        method = str(method)
         group = group.sort_values(x)
 
-        label_str = None if label is None else str(label)
-        color = get_style_color(label_str, style) if label_str is not None else None
+        color = get_style_color(method, style, default=None)
 
         x_error = group[xerr] if xerr is not None else None
         y_error = group[yerr] if yerr is not None else None
@@ -133,20 +128,20 @@ def plot_metric_vs_metric(
                 group[y],
                 xerr=x_error,
                 yerr=y_error,
-                label=label_str,
+                label=method,
                 marker=marker,
                 linestyle=linestyle,
                 linewidth=line_width,
                 markersize=marker_size,
                 color=color,
-                ecolor=errorbar_color,
+                ecolor=errorbar_color or color,
                 capsize=errorbar_capsize,
             )
         else:
             ax.plot(
                 group[x],
                 group[y],
-                label=label_str,
+                label=method,
                 marker=marker,
                 linestyle=linestyle,
                 linewidth=line_width,
@@ -160,7 +155,7 @@ def plot_metric_vs_metric(
     if title is not None:
         ax.set_title(title)
 
-    if show_legend and group_by is not None:
+    if show_legend:
         ax.legend()
 
     apply_plot_style(fig, ax, style)
@@ -170,9 +165,11 @@ def plot_metric_vs_metric(
 
 def plot_runtime_comparison(
     df: pd.DataFrame,
-    method_col: str = "compressor",
-    compression_time_col: str = "COMP_TIME",
-    decompression_time_col: str = "DECOMP_TIME",
+    method_col: str = "method",
+    compression_time_col: str = "comp_time_mean",
+    decompression_time_col: str = "decomp_time_mean",
+    compression_error_col: str | None = None,
+    decompression_error_col: str | None = None,
     style: dict[str, Any] | None = None,
     ax: Axes | None = None,
     title: str | None = "Runtime Comparison",
@@ -180,11 +177,11 @@ def plot_runtime_comparison(
     show_legend: bool = True,
 ):
     """
-    Plot runtime comparison grouped by action.
+    Plot compression and decompression runtime comparison.
 
-    The x-axis contains runtime actions, such as compression and
-    decompression. Within each action group, one bar is shown for each
-    method/compressor.
+    This function expects an already-prepared dataframe. Each row should
+    represent one method/compressor. Runtime means and standard
+    deviations should be computed before calling this function.
 
     Parameters
     ----------
@@ -192,19 +189,26 @@ def plot_runtime_comparison(
         DataFrame containing runtime values.
 
     method_col : str, optional
-        Column containing method or compressor names.
+        Column containing method names.
 
     compression_time_col : str, optional
-        Column containing compression time values.
+        Column containing compression runtime values.
 
     decompression_time_col : str, optional
-        Column containing decompression time values.
+        Column containing decompression runtime values.
+
+    compression_error_col : str | None, optional
+        Column containing compression runtime error values.
+
+    decompression_error_col : str | None, optional
+        Column containing decompression runtime error values.
 
     style : dict | None, optional
         Plot style dictionary.
 
     ax : Axes | None, optional
-        Existing matplotlib axis. If None, a new figure and axis are created.
+        Existing matplotlib axis. If None, a new figure and axis are
+        created.
 
     title : str | None, optional
         Plot title.
@@ -220,14 +224,22 @@ def plot_runtime_comparison(
     fig, ax
         Matplotlib figure and axis.
     """
-    _validate_columns(
-        df,
-        [
-            method_col,
-            compression_time_col,
-            decompression_time_col,
-        ],
-    )
+
+    style = style or DEFAULT_STYLE
+
+    required_columns = [
+        method_col,
+        compression_time_col,
+        decompression_time_col,
+    ]
+
+    if compression_error_col is not None:
+        required_columns.append(compression_error_col)
+
+    if decompression_error_col is not None:
+        required_columns.append(decompression_error_col)
+
+    _validate_columns(df, required_columns)
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -235,27 +247,49 @@ def plot_runtime_comparison(
         fig = ax.figure
 
     methods = df[method_col].astype(str).to_list()
-    actions = ["Compression", "Decompression"]
+
+    actions = [
+        get_style_value(style, "compression_label", "Compression"),
+        get_style_value(style, "decompression_label", "Decompression"),
+    ]
+
     action_positions = np.arange(len(actions))
 
     n_methods = len(methods)
-    total_group_width = 0.75
-    bar_width = total_group_width / n_methods
+    group_width = get_style_value(style, "group_width", 0.75)
+    bar_width = group_width / n_methods
 
     offsets = (
         np.arange(n_methods) - (n_methods - 1) / 2
     ) * bar_width
 
-    runtime_columns = [
-        compression_time_col,
-        decompression_time_col,
-    ]
+    errorbar_capsize = get_style_value(style, "errorbar_capsize", 4)
+    errorbar_color = get_style_value(style, "bar_errorbar", None)
 
     for method_idx, method in enumerate(methods):
         values = [
-            df.iloc[method_idx][column]
-            for column in runtime_columns
+            df.iloc[method_idx][compression_time_col],
+            df.iloc[method_idx][decompression_time_col],
         ]
+
+        errors = None
+
+        if (
+            compression_error_col is not None
+            or decompression_error_col is not None
+        ):
+            errors = [
+                (
+                    df.iloc[method_idx][compression_error_col]
+                    if compression_error_col is not None
+                    else 0.0
+                ),
+                (
+                    df.iloc[method_idx][decompression_error_col]
+                    if decompression_error_col is not None
+                    else 0.0
+                ),
+            ]
 
         color = get_style_color(method, style, default=None)
 
@@ -263,6 +297,9 @@ def plot_runtime_comparison(
             action_positions + offsets[method_idx],
             values,
             width=bar_width,
+            yerr=errors,
+            capsize=errorbar_capsize if errors is not None else 0,
+            ecolor=errorbar_color or color,
             label=method,
             color=color,
         )

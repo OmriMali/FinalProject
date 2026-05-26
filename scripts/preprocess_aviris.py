@@ -36,7 +36,7 @@ def main():
         if trim_border:
             hsi = trim_borders(hsi, black_value=-50)
 
-        io.save_hsi(hsi, rf"{processed_dir}\{scene}", scene)
+        io.save_hsi(hsi, processed_dir, scene)
 
         if crop_to_sections:
             sections = crop_hsi_sections(hsi, section_size)

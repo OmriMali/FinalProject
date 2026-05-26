@@ -28,18 +28,21 @@ def main():
     compressors_to_run = [
         "hcs1d",
         # "hcs3d",
-        "ccsds123",
+        # "ccsds123",
+        "hybrid",
     ]
-    experiment = "data_processing_test"
+    experiment = "hybrid_vs_hcs1d"
     ber = 0.0
     tags = None
     
     save_reconstructed = False
     save_compressed = False
+
+    reps = 3
     
     # ===== Paths =====
     hsi_dir = r"data\sections\JasperRidge"
-    hsi_name = "JasperRidge_r4_c2"
+    hsi_name = "JasperRidge_r2_c2"
 
     dict_dir = r"resources\dictionaries"
     dict_name = "jasper_ridge_split_01_ksvd_400_atoms.npz"
@@ -77,7 +80,7 @@ def main():
                 "K": 3
             },
             "sweep": {
-                "sr": [1/5, 1/8, 1/10, 1/15],
+                "sr": [1/2, 1/3, 1/5, 1/8, 1/10],
             },
         },
 
@@ -109,6 +112,20 @@ def main():
                 "a": [10, 40, 100, 400],
             },
         },
+
+        "hybrid": {
+            "config_cls": compressors.HybridConfig,
+            "fixed": {
+                "K": 3,
+                "Phi": "SUBSAMPLING",
+                "Psi":learned_base,
+                "block_size": 32,
+                "protect_bitstream": False,
+            },
+            "sweep": {
+                "sr": [1/2, 1/3, 1/5, 1/8, 1/10],
+            }
+        }
     }
 
     for compressor_name in compressors_to_run:
@@ -122,12 +139,13 @@ def main():
         ):
             compressor = compressor_cls(config)
 
-            runner.run_compression(
-                hsi=hsi,
-                compressor=compressor,
-                experiment=experiment,
-                ber=ber
-            )
+            for _ in range(reps):
+                runner.run_compression(
+                    hsi=hsi,
+                    compressor=compressor,
+                    experiment=experiment,
+                    ber=ber
+                )
 
 
 if __name__ == "__main__":

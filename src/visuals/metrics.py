@@ -172,7 +172,7 @@ def plot_runtime_comparison(
     decompression_error_col: str | None = None,
     style: dict[str, Any] | None = None,
     ax: Axes | None = None,
-    title: str | None = "Runtime Comparison",
+    title: str | None = None,
     ylabel: str = "Time [s]",
     show_legend: bool = True,
 ):

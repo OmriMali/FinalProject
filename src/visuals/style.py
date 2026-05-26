@@ -55,6 +55,7 @@ DEFAULT_STYLE: dict[str, Any] = {
         "hcs1d": "#7F00FF",
         "ccsds123": "#CC6600",
         "hcs3d": "#00AA55",
+        "hybrid": "#CC0000",
         "original": "#000000",
     },
 }
@@ -100,6 +101,7 @@ DARK_STYLE: dict[str, Any] = {
         "hcs1d": "#7F00FF",
         "ccsds123": "#CC6600",
         "hcs3d": "#00AA55",
+        "hybrid": "#CC0000",
         "original": "#000000",
     },
 }

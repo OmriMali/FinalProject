@@ -20,23 +20,19 @@ class HybridConfig(CompressorConfig):
     Parameters
     ----------
     K : int
-        Sparsity for the provided axis.
+        Estimated sparsity for the spectral axis.
 
     sr : float
-        Sampling ratio for the provided axis.
+        Sampling rate in the spectral axis.
+
+    Phi : str
+        Measurement matrix name.
 
     Psi : str
         Sparse basis name.
 
     local_sum_mode : str
         Mode for local sum. accepts: 'column', 'neighbor'
-
-    Omega : int
-        Resolution of calculation.
-    
-    a : int
-        Absolute error limit per pixel.
-        At a=0, compression is lossless.
 
     block size : int
         Block size for encoder.
@@ -46,17 +42,17 @@ class HybridConfig(CompressorConfig):
     """
     K: int = 3
     sr: float = 0.1
+    Phi: str = "SUBSAMPLING"
     Psi: str = "IDCT"
-    local_sum_mode: str = 'column'
-    Omega: int = 8
-    a: int = 0
     block_size: int = 32
     protect_bitstream: bool = False
 
 @register_compressor
 class Hybrid(Compressor):
     """
-    An hybrid of the CCSDS123 and HCS1D compressors.
+    An hybrid of the CCSDS123 and HCS1D compressors. The spatial compression is done
+    by a CCSDS123 like prediction loop, and the spectral compression by an HCS1D
+    sparse recovery.
     """  
     name = "hybrid"
     Config = HybridConfig
@@ -64,83 +60,50 @@ class Hybrid(Compressor):
     def __init__(self, config: HybridConfig, progress_callback=None):
         super().__init__(config, progress_callback)
 
-        self._validate_config()
-        self._initialize_weights()
-    
-    def _initialize_weights(self):
-        """
-        Build weights for CCSDS123 predictor loop.
-        """
-        weights = []
-        w_0 = (7 * (1 << self.config.Omega)) >> 3
-        weights.append(w_0)
-
-        for i in range(1, 1):
-            w_prev = weights[-1]
-            w_next = w_prev >> 3
-            weights.append(w_next)
-        
-        self.W = np.array(weights, dtype=np.int32)     # Weights for predictor
-
-    def _validate_config(self) -> None:
-        """
-        Validate CCSDS123 configuration parameters.
-        """
-        if self.config.local_sum_mode not in {"column", "neighbor"}:
-            raise ValueError("local_sum_mode must be either 'column' or 'neighbor'")
-
-        if self.config.Omega <= 0:
-            raise ValueError("Omega must be positive")
-
-        if self.config.a < 0:
-            raise ValueError("a must be non-negative")
-
-        if self.config.block_size <= 0:
-            raise ValueError("block_size must be positive")
-
-    def _validate_input(self, hsi: HSI) -> None:
-        """
-        Validate input hyperspectral image for CCSDS123 compression.
-        """
-        if not np.issubdtype(hsi.data.dtype, np.integer):
-            raise ValueError("CCSDS123 requires integer-valued input data")
-
 
     def compress(self, hsi: HSI) -> CompressedHSI:
 
         self.report_progress(0.0)
+        
+        # 1. Normalize data
+        y, hsi_min, hsi_max = numeric.normalize(hsi.data)
 
-        # 1. Generate measurement matrix
+        # 2. Generate measurement matrix
         n = hsi.shape[2]
         p = int(self.config.sr * n)
         seed = np.random.randint(0, 1_000_000)
-        Phi = get_measurement("SUBSAMPLING", p, n, seed)
+        Phi = get_measurement(self.config.Phi, p, n, seed)
         self.report_progress(0.04)
-
-        # 2. Get hsi measurements
-        y = n_way_ops.mode_n_product(hsi.data, Phi, 2)
+        
+        # 3. Take measurements
+        y = n_way_ops.mode_n_product(y, Phi, 2)
         self.report_progress(0.08)
 
-        # 4. Run predictor to get mapped residuals
-        scaled_report = self._scaled_progress(0.08, 0.8)
-        delta = self._encoder_predictor(y, scaled_report)
+        # 4. Quantize samples
+        y_quant, y_max = numeric.quantize_symmetric(y, hsi.metadata.bit_depth)
+        self.report_progress(0.1)
 
-        # 5. Convert residuals to bitstream
+        # 5. Prediction loop
+        scaled_report = self._scaled_progress(0.1, 0.8)
+        delta = self._encoder_predictor(y_quant, scaled_report)
+
+        # 6. Convert residuals to bitstream
         scaled_report = self._scaled_progress(0.8, 0.99)
         stream, k_values = self._rice_encode(delta, scaled_report)
 
-        # 6. Compute BER protection mask (optional)
+        # 7. Compute BER protection mask (optional)
         protection_mask = None 
         if self.config.protect_bitstream == True:
             protection_mask = self._calculate_protection_mask(delta, k_values)
 
-        # 7. Create output object
+        # 8. Create output object
         compressed = CompressedHSI(
             bitstream=stream,
             metadata=hsi.metadata,
             side_information={
-                "hsi_min": np.min(hsi.data),
-                "hsi_max": np.max(hsi.data),
+                "hsi_min": hsi_min,
+                "hsi_max": hsi_max,
+                "y_max": y_max,
                 "y_shape": y.shape,
                 "seed": seed,
                 "protection_mask": protection_mask
@@ -156,233 +119,145 @@ class Hybrid(Compressor):
 
         # 1. Get residuals by decoding bitstream
         scaled_report = self._scaled_progress(0.0, 0.1)
-        delta = self._rice_decode(compressed.bitstream,
-                                  compressed.side_information["y_shape"], scaled_report)
+        delta = self._rice_decode(
+            compressed.bitstream,
+            compressed.side_information["y_shape"], scaled_report)
 
-        # 2. Run predictor to get reconstruction
+        # 2. Prediction loop
         scaled_report = self._scaled_progress(0.1, 0.5)
-        y = self._decoder_predictor(
-            delta,
+        y_quant = self._decoder_predictor(delta, scaled_report)
+        
+        # 3. Dequantization
+        y = numeric.dequantize_symmetric(
+            y_quant,
+            compressed.metadata.bit_depth,
+            compressed.side_information["y_max"])
+
+        if self.config.sr < 1:
+            # 3. Get measurement and sparse basis matrices
+            n = compressed.metadata.shape[2]
+            p = compressed.side_information["y_shape"][2]
+            Phi = get_measurement(self.config.Phi, p, n, compressed.side_information["seed"])
+            Psi = get_sparse_base(self.config.Psi, n)
+            self.report_progress(0.52)
+
+            # 4. Create normalized dictionary
+            D = Phi @ Psi
+            col_norms = np.linalg.norm(D, axis=0)
+            col_norms[col_norms == 0] = 1.0
+            S_inv = np.diag(1.0 / col_norms)
+            D = D @ S_inv
+            Psi_norm = Psi @ S_inv
+            self.report_progress(0.54)
+
+            # 5. Run sparse recovery algorithm
+            y_unfolded = n_way_ops.mode_n_unfold(y, 2)
+            num_pixels = y_unfolded.shape[1]
+            x_unfolded = np.zeros((D.shape[1], num_pixels))
+            for i in range(num_pixels):
+                x_unfolded[:, i] = regression_algs.omp(D, y_unfolded[:, i], self.config.K, tol=1e-2)
+                if i % 100 == 0:
+                    self.report_progress(0.54 + 0.45*(i / num_pixels))
+            self.report_progress(0.99)
+
+            # 6. Get reconstruction via inverse transform
+            pixel_shape = list(compressed.metadata.shape)
+            pixel_shape[2] = D.shape[1]
+            x = n_way_ops.mode_n_fold(x_unfolded, 2, pixel_shape)
+            z = n_way_ops.mode_n_product(x, Psi_norm, 2)
+        
+        else:
+            z = y
+        
+        # 7. Denormalize
+        z = numeric.denormalize(
+            z,
             compressed.side_information["hsi_min"],
-            compressed.side_information["hsi_max"],
-            scaled_report)
+            compressed.side_information["hsi_max"]
+        )
 
-       
-        # 3. Get measurement and sparse basis matrices
-        n = compressed.metadata.shape[2]
-        p = compressed.side_information["y_shape"][2]
-        Phi = get_measurement("SUBSAMPLING", p, n, compressed.side_information["seed"])
-        Psi = get_sparse_base(self.config.Psi, n)
-        self.report_progress(0.52)
-
-        # 4. Create normalized dictionary
-        D = Phi @ Psi
-        col_norms = np.linalg.norm(D, axis=0)
-        col_norms[col_norms == 0] = 1.0
-        S_inv = np.diag(1.0 / col_norms)
-        D = D @ S_inv
-        Psi_norm = Psi @ S_inv
-        self.report_progress(0.54)
-
-        # 5. Run sparse recovery algorithm
-        y_unfolded = n_way_ops.mode_n_unfold(y, 2)
-        num_pixels = y_unfolded.shape[1]
-        x_unfolded = np.zeros((D.shape[1], num_pixels))
-        for i in range(num_pixels):
-            x_unfolded[:, i] = regression_algs.omp(D, y_unfolded[:, i], self.config.K, tol=1e-2)
-            if i % 100 == 0:
-                self.report_progress(0.54 + 0.45*(i / num_pixels))
-        self.report_progress(0.99)
-
-        # 6. Get reconstruction via inverse transform
-        pixel_shape = list(compressed.metadata.shape)
-        pixel_shape[2] = D.shape[1]
-        x = n_way_ops.mode_n_fold(x_unfolded, 2, pixel_shape)
-        z = n_way_ops.mode_n_product(x, Psi_norm, 2)
-        z = numeric.denormalize(z,
-                                compressed.side_information["hsi_min"],
-                                compressed.side_information["hsi_max"])
-
-        # 7. Create output object
+        # 8. Create output object
         reconstruction = HSI(z, compressed.metadata)
         self.report_progress(1.0)
 
         return reconstruction
 
+    def _predict_sample(self, S_rep_z, x: int, y: int) -> int:
+        """
+        Predict one sample from already reconstructed spatial neighbors.
+        """
+        if y == 0 and x == 0:
+            return 0
+        
+        if y == 0:
+            return int(S_rep_z[y, x-1])
+        
+        if x == 0:
+            return int(S_rep_z[y-1, x])
+        
+        left = int(S_rep_z[y, x-1])
+        up = int(S_rep_z[y-1, x])
+
+        return (left + up) // 2
 
     def _encoder_predictor(self, S, report_callback=None):
         """
-        Run the CCSDS123 predictive encoder.
-
-        Parameters
-        ----------
-        S : np.ndarray
-            Input hyperspectral image cube.
-
-        report_callback : callable | None, optional
-            Progress callback function.
-
-        Returns
-        -------
-        np.ndarray
-            Mapped prediction residuals.
+        Convert integer samples to mapped residuals.
         """
-        Nx, Ny, Nz = S.shape
-        smin = np.min(S)
-        smax = np.max(S)
+        S = np.asarray(S, dtype=np.int32)
+        H, W, B = S.shape
 
-        S_rep = np.zeros_like(S, dtype=np.int32)
-        delta = np.zeros_like(S, dtype=np.int32)
-        U = np.zeros((Nx, Ny, 1), dtype=np.int32)
-        a_den = 2*self.config.a + 1
+        S_rep = np.zeros((H, W, B), dtype=np.int32)
+        delta = np.zeros((H, W, B), dtype=np.int32)
 
-        for z in range(Nz):
+        for z in range(B):
             if report_callback:
-                report_callback(z / Nz)
+                report_callback(z / B)
+            
+            for y in range(H):
+                for x in range(W):
+                    pred = self._predict_sample(S_rep[:, :, z], x, y)
+                    residual = S[y, x, z] - pred
 
-            for y in range(Ny):
-                for x in range(Nx):
-                    
-                    sigma = self._calc_local_sum(S_rep[:, :, z], x, y, Nx, Ny)
-
-                    d_hat = np.dot(self.W, U[x, y, :])
-
-                    s_hat = (d_hat + (sigma << self.config.Omega)) >> (2 + self.config.Omega)
-                    s_hat = np.clip(s_hat, smin, smax)
-
-                    Delta = S[x, y, z] - s_hat
-                    q = np.sign(Delta) * ((np.abs(Delta) + self.config.a) // a_den)
-    
-                    s_rep = np.clip(s_hat + q * a_den, smin, smax)
-                    S_rep[x, y, z] = s_rep
-                    
-                    U[x, y, 1:] = U[x, y, :-1]
-                    U[x, y, 0] = 4*s_rep - sigma
-
-                    if q >= 0:
-                        delta[x, y, z] = 2 * q
+                    if residual >= 0:
+                        mapped = 2 * residual
                     else:
-                        delta[x, y, z] = 2 * abs(q) - 1
+                        mapped = -2 * residual - 1
 
-        return delta
+                    delta[y, x, z] = mapped
+
+                    S_rep[y, x, z] = S[y, x, z]
+
+        return delta    
     
-    def _decoder_predictor(self, delta, smin, smax, report_callback=None):
+    def _decoder_predictor(self, delta, report_callback=None):
         """
-        Reconstruct an image cube from mapped prediction residuals.
-
-        Parameters
-        ----------
-        delta : np.ndarray
-            Mapped prediction residuals.
-
-        smin : int
-            Minimum sample value.
-
-        smax : int
-            Maximum sample value.
-
-        report_callback : callable | None, optional
-            Progress callback function.
-
-        Returns
-        -------
-        np.ndarray
-            Reconstructed hyperspectral image cube.
+        Convert mapped prediction residuals back to integer samples.
         """
-        
-        Nx, Ny, Nz = delta.shape
+        delta = np.asarray(delta, dtype=np.int32)
+        H, W, B = delta.shape
 
-        S_rep = np.zeros((Nx, Ny, Nz), dtype=np.int32)
-        U = np.zeros((Nx, Ny, 1), dtype=np.int32)
+        S_rep = np.zeros((H, W, B), dtype=np.int32)
 
-        a_den = 2 * self.config.a + 1
-        
-        for z in range(Nz):
+        for z in range(B):
             if report_callback:
-                report_callback(z / Nz)
+                report_callback(z / B)
 
-            for y in range(Ny):
-                for x in range(Nx):
-                    
-                    sigma = self._calc_local_sum(S_rep[:, :, z], x, y, Nx, Ny)
+            for y in range(H):
+                for x in range(W):
+                    pred = self._predict_sample(S_rep[:, :, z], x, y)
 
-                    d_hat = np.dot(self.W, U[x, y, :])
+                    mapped = delta[y, x, z]
 
-                    s_hat = (d_hat + (sigma << self.config.Omega)) >> (2 + self.config.Omega)
-                    s_hat = np.clip(s_hat, smin, smax)
-
-                    delta_val = delta[x, y, z]
-
-                    if delta_val % 2 == 0:
-                        q = delta_val // 2      
+                    if mapped % 2 == 0:
+                        residual = mapped // 2
                     else:
-                        q = -(delta_val + 1) // 2
+                        residual = -((mapped + 1) // 2)
 
-                    s_rep = np.clip(s_hat + q * a_den, smin, smax)
-                    S_rep[x, y, z] = s_rep           
-
-                    U[x, y, 1:] = U[x, y, :-1]
-                    U[x, y, 0] = 4*s_rep - sigma
+                    S_rep[y, x, z] = pred + residual
 
         return S_rep
-    
-    def _calc_local_sum(self, S_rep_z, x, y, Nx, Ny):
-        """
-        Compute the local prediction sum for a spatial sample.
 
-        Parameters
-        ----------
-        S_rep_z : np.ndarray
-            Reconstructed spectral slice.
-
-        x : int
-            Horizontal pixel coordinate.
-
-        y : int
-            Vertical pixel coordinate.
-
-        Nx : int
-            Image width.
-
-        Ny : int
-            Image height.
-
-        Returns
-        -------
-        int
-            Local prediction sum.
-        """
-
-        def rep(xx, yy):
-            xx = min(max(xx, 0), Nx - 1)
-            yy = min(max(yy, 0), Ny - 1)
-            return S_rep_z[xx, yy]
-
-        if self.config.local_sum_mode == 'column':
-            if y > 0:
-                return 4 * rep(x, y-1)
-            elif x > 0:
-                return 4 * rep(x-1, y)
-            else:
-                return 0
-
-        elif self.config.local_sum_mode == 'neighbor':
-            if y == 0 and x == 0:
-                return 0
-            elif y == 0:
-                return 4 * rep(x-1, y)
-            elif x == 0:
-                return 2 * (rep(x, y-1) + rep(x+1, y-1))
-            elif x == Nx - 1:
-                return rep(x-1, y) + rep(x-1, y-1) + 2 * rep(x, y-1)
-            else:
-                return (
-                    rep(x-1, y) +
-                    rep(x-1, y-1) +
-                    rep(x,   y-1) +
-                    rep(x+1, y-1)
-                )
-    
 
     def _rice_encode(self, delta, report_callback=None):
         """

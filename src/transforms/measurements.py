@@ -55,3 +55,8 @@ def subsampling(m, n, rng=None, **kwargs):
     mat[np.arange(m), chosen] = 1.0
 
     return mat
+
+@register_measurement("BERNOULLI")
+def bernoulli(m, n, rng=None, **kwargs):
+    M = rng.binomial(1, 0.2, size=(m, n)).astype(np.int32)
+    return M / np.linalg.norm(M, axis=0, keepdims=True)

@@ -22,3 +22,7 @@ from src.io.compressed_hsi import (
 from src.io.aviris import (
     load_aviris_folder
 )
+
+from src.io.logs import (
+    load_recent_compression
+)

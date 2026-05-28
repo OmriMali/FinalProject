@@ -87,6 +87,7 @@ def _clean_log_dataframe(
     if "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(
             df["timestamp"],
+            format="ISO8601",
             errors="coerce",
         )
 

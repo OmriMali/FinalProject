@@ -1,4 +1,16 @@
 import pandas as pd
+import operator
+from typing import Literal
+
+
+_OPERATOR_MAP = {
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
 
 
 def filter_by(
@@ -43,7 +55,7 @@ def filter_by(
             filtered[column] == value
         ]
 
-    return filtered
+    return filtered.copy()
 
 
 def filter_in(
@@ -84,7 +96,7 @@ def filter_in(
 
     return df[
         df[column].isin(values)
-    ]
+    ].copy()
 
 
 def filter_notna(
@@ -125,4 +137,53 @@ def filter_notna(
 
     return df.dropna(
         subset=columns
-    )
+    ).copy()
+
+
+def filter_compare(
+    df: pd.DataFrame,
+    column: str,
+    op: Literal["<", "<=", ">", ">=", "==", "!="],
+    value,
+) -> pd.DataFrame:
+    """
+    Filter rows using a comparison operation.
+
+    If the requested column does not exist, the dataframe is returned
+    unchanged. If the column exists but a row has NaN in that column,
+    the row is kept.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    column : str
+        Column to compare.
+
+    op : {"<", "<=", ">", ">=", "==", "!="}
+        Comparison operator.
+
+    value
+        Value to compare against.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered dataframe.
+    """
+
+    if op not in _OPERATOR_MAP:
+        raise ValueError(f"Unsupported operator: {op}")
+
+    if column not in df.columns:
+        return df.copy()
+
+    compare_mask = _OPERATOR_MAP[op](df[column], value)
+
+    # Keep rows where the column is NaN, because this likely means the
+    # parameter/metric is not relevant for that method.
+    mask = df[column].isna() | compare_mask
+
+    return df[mask].copy()
+

@@ -8,6 +8,7 @@ from src.data_processing.filters import (
     filter_by,
     filter_in,
     filter_notna,
+    filter_compare,
 )
 
 from src.data_processing.aggregate import (

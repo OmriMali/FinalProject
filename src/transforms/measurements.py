@@ -18,7 +18,28 @@ def register_measurement(name: str):
     return decorator
 
 def get_measurement(name: str, m: int, n: int, seed: int | None = None, **kwargs):
-    key = name.upper()
+    """
+    Build a measurement matrix.
+
+    Supports parameters such as:
+
+    ``BERNOULLI:p=...``
+    """
+    if ":" in name:
+        meas, spec = name.split(":", 1)
+        key = meas.upper()
+
+        for item in spec.split(","):
+            if "=" not in item:
+                raise ValueError(
+                    f"Invalid parameter: {item}"
+                )
+
+            k, v = item.split("=", 1)
+            kwargs[k.strip()] = v.strip()
+
+    else:
+        key = name.upper()
 
     if key not in _MEASUREMENTS:
         raise ValueError(f"Unknown measurement: {name}")
@@ -57,8 +78,15 @@ def subsampling(m, n, rng=None, **kwargs):
     return mat
 
 @register_measurement("BERNOULLI")
-def bernoulli(m, n, rng=None, **kwargs):
-    M = rng.binomial(1, 0.5, size=(m, n))
+def bernoulli(m, n, rng=None, p: str | None = None, **kwargs):
+    if p is None:
+        p = 0.3
+    else:
+        p = float(p)
+        if p >= 1 or p <= 0:
+            raise ValueError("p must be between 0 and 1")
+    
+    M = rng.binomial(1, p, size=(m, n))
     norms = np.linalg.norm(M, axis=0, keepdims=True)
     norms[norms == 0] = 1.0
     return M / norms

@@ -24,5 +24,6 @@ from src.io.aviris import (
 )
 
 from src.io.logs import (
-    load_recent_compression
+    load_recent_compression,
+    load_compression_run,
 )

@@ -51,8 +51,8 @@ def main():
         ),
         "hybrid": compressors.HybridConfig(
             K=3,
-            sr=0.1,
-            Phi="SUBSAMPLING",
+            sr=0.05,
+            Phi="BERNOULLI",
             Psi=learned_base,
             block_size=32,
             protect_bitstream=False

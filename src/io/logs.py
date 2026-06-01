@@ -25,7 +25,10 @@ def load_recent_compression(log_path: str | Path) -> dict[str, Any]:
 
     if "timestamp" in df.columns:
         df = df.copy()
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df["timestamp"] = pd.to_datetime(df["timestamp"],
+                                        format="%Y-%m-%dT%H:%M:%S", 
+                                        errors="coerce"
+                                        )
         df = df.sort_values("timestamp")
 
     row = df.iloc[-1].to_dict()

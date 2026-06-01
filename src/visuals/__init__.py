@@ -16,3 +16,8 @@ from src.visuals.style import (
     DARK_STYLE,
     DEFAULT_STYLE
 )
+
+from src.visuals.annotations import (
+    format_metrics_text,
+    add_panel_text
+)

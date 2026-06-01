@@ -47,6 +47,13 @@ DEFAULT_STYLE: dict[str, Any] = {
     "bar_errorbar": "black",
     "errorbar_capsize": 3,
 
+    # Annotation / panel text appearance
+    "panel_text_color": "black",
+    "panel_text_facecolor": "white",
+    "panel_text_edgecolor": "black",
+    "panel_text_alpha": 0.7,
+    "panel_text_fontsize": 9,
+
     # Image defaults
     "cmap": "gray",
 
@@ -92,6 +99,13 @@ DARK_STYLE: dict[str, Any] = {
     "line_errorbar": None,
     "bar_errorbar": "white",
     "errorbar_capsize": 3,
+
+    # Annotation / panel text appearance
+    "panel_text_color": "white",
+    "panel_text_facecolor": "#404040",
+    "panel_text_edgecolor": "white",
+    "panel_text_alpha": 0.7,
+    "panel_text_fontsize": 9,
 
     # Image defaults
     "cmap": "gray",

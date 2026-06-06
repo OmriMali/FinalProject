@@ -26,12 +26,12 @@ def main():
 
     # ===== Run info =====
     compressors_to_run = [
-        # "hcs1d",
+        "hcs1d",
         # "hcs3d",
-        "hybrid",
+        # "hybrid",
         # "ccsds123",
     ]
-    experiment = "bernoulli_comp"
+    experiment = "hcs1d_transform_basis_sweep_3"
     ber = 0.0
     tags = None
     
@@ -81,12 +81,12 @@ def main():
             "config_cls": compressors.HCS1DConfig,
             "fixed": {
                 "axis": Axis.SPECTRAL,
-                "Psi": learned_base,
                 "Phi": "BERNOULLI",
                 "K": 3
             },
             "sweep": {
-                "sr": [1/24, 1/28, 1/32, 1/36, 1/40],
+                "Psi": [learned_base, "IDCT"],
+                "sr": [1/2, 1/4, 1/8, 1/16, 1/32],
             },
         },
 
@@ -100,7 +100,7 @@ def main():
                 "K": [2000, 3000, 4000, 5000],
                 "sr": [
                     (0.5, 0.5, 0.05),
-                    (0.5, 0.5, 0.1),
+                    (0.5, 0.5, 0.1), 
                     (0.8, 0.8, 0.1),
                 ],
             },

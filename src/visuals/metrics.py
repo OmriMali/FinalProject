@@ -35,6 +35,7 @@ def plot_metric_vs_metric(
     xlabel: str | None = None,
     ylabel: str | None = None,
     show_legend: bool = True,
+    plot_type: str = "line",
 ):
     """
     Plot one metric against another for multiple methods.
@@ -82,6 +83,9 @@ def plot_metric_vs_metric(
 
     show_legend : bool, optional
         Whether to show a legend.
+    
+    plot_type : str, optional
+        Type of plot to generate. Options are "line" or "bar". Default is "line".
 
     Returns
     -------
@@ -96,7 +100,7 @@ def plot_metric_vs_metric(
     if yerr is not None:
         required_columns.append(yerr)
 
-    if xerr is not None:
+    if xerr is not None and plot_type == "line":
         required_columns.append(xerr)
 
     _validate_columns(df, required_columns)
@@ -113,41 +117,77 @@ def plot_metric_vs_metric(
     errorbar_capsize = get_style_value(style, "errorbar_capsize", 3)
     errorbar_color = get_style_value(style, "line_errorbar", None)
 
-    for method, group in df.groupby(method_col):
-        method = str(method)
-        group = group.sort_values(x)
+    methods = df[method_col].unique()
 
-        color = get_style_color(method, style, default=None)
+    if plot_type == "bar":
+        # Setup for grouped bar chart
+        categories = df[x].unique()
+        x_indices = np.arange(len(categories))
+        
+        n_methods = len(methods)
+        group_width = get_style_value(style, "group_width", 0.75)
+        bar_width = group_width / n_methods
+        offsets = (np.arange(n_methods) - (n_methods - 1) / 2) * bar_width
 
-        x_error = group[xerr] if xerr is not None else None
-        y_error = group[yerr] if yerr is not None else None
+        for method_idx, method in enumerate(methods):
+            method_str = str(method)
+            group = df[df[method_col] == method].set_index(x).reindex(categories)
+            
+            color = get_style_color(method_str, style, default=None)
+            y_values = group[y].values
+            y_errors = group[yerr].values if yerr is not None else None
 
-        if xerr is not None or yerr is not None:
-            ax.errorbar(
-                group[x],
-                group[y],
-                xerr=x_error,
-                yerr=y_error,
-                label=method,
-                marker=marker,
-                linestyle=linestyle,
-                linewidth=line_width,
-                markersize=marker_size,
-                color=color,
+            ax.bar(
+                x_indices + offsets[method_idx],
+                y_values,
+                width=bar_width,
+                yerr=y_errors,
+                capsize=errorbar_capsize if y_errors is not None else 0,
                 ecolor=errorbar_color or color,
-                capsize=errorbar_capsize,
-            )
-        else:
-            ax.plot(
-                group[x],
-                group[y],
-                label=method,
-                marker=marker,
-                linestyle=linestyle,
-                linewidth=line_width,
-                markersize=marker_size,
+                label=method_str,
                 color=color,
             )
+            
+        ax.set_xticks(x_indices)
+        ax.set_xticklabels(categories)
+
+    else:
+        # Line
+        for method, group in df.groupby(method_col):
+            method_str = str(method)
+            group = group.sort_values(x)
+
+            color = get_style_color(method_str, style, default=None)
+
+            x_error = group[xerr] if xerr is not None else None
+            y_error = group[yerr] if yerr is not None else None
+
+            if xerr is not None or yerr is not None:
+                ax.errorbar(
+                    group[x],
+                    group[y],
+                    xerr=x_error,
+                    yerr=y_error,
+                    label=method_str,
+                    marker=marker,
+                    linestyle=linestyle,
+                    linewidth=line_width,
+                    markersize=marker_size,
+                    color=color,
+                    ecolor=errorbar_color or color,
+                    capsize=errorbar_capsize,
+                )
+            else:
+                ax.plot(
+                    group[x],
+                    group[y],
+                    label=method_str,
+                    marker=marker,
+                    linestyle=linestyle,
+                    linewidth=line_width,
+                    markersize=marker_size,
+                    color=color,
+                )
 
     ax.set_xlabel(xlabel or x)
     ax.set_ylabel(ylabel or y)
@@ -156,12 +196,13 @@ def plot_metric_vs_metric(
         ax.set_title(title)
 
     if show_legend:
-        ax.legend()
+        # Pushes it just below the x-axis label
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+        fig.tight_layout()
 
     apply_plot_style(fig, ax, style)
 
     return fig, ax
-
 
 def plot_runtime_comparison(
     df: pd.DataFrame,

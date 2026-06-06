@@ -9,9 +9,9 @@ from src.loggers.artifacts import ArtifactLoggerCallback
 def main():
 
     # ===== Run info =====
-    compressor_name = "hybrid"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
-    experiment = "hybrid_test"
-    ber = 0.0
+    compressor_name = "ccsds123"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
+    experiment = "ccsds123_test"
+    ber = 0.000001
     tags = None
 
     save_reconstructed = True
@@ -19,7 +19,7 @@ def main():
 
     # ===== Paths =====
     hsi_dir = r"data\sections\JasperRidge"
-    hsi_name = "JasperRidge_r1_c1"
+    hsi_name = "JasperRidge_r6_c2"
 
     dict_dir = r"resources\dictionaries"
     dict_name = r"jasper_ridge_split_01_ksvd_400_atoms.npz"
@@ -31,7 +31,7 @@ def main():
     configs = {
         "hcs1d": compressors.HCS1DConfig(
             K=3,
-            sr=0.1,
+            sr=0.05,
             axis=Axis.SPECTRAL,
             Phi="SUBSAMPLING",
             Psi=learned_base,
@@ -46,13 +46,13 @@ def main():
             local_sum_mode="column",
             P=2,
             Omega=8,
-            a=100,
+            a=400,
             block_size=32,
         ),
         "hybrid": compressors.HybridConfig(
             K=3,
             sr=0.05,
-            Phi="BERNOULLI",
+            Phi="GAUSSIAN",
             Psi=learned_base,
             block_size=32,
             protect_bitstream=False

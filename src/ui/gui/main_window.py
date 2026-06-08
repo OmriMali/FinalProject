@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
@@ -17,11 +18,15 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
+    QTabWidget,
+    QHeaderView,
 )
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
+from src.visuals import compare_rgb, format_metrics_text, add_panel_text, DEFAULT_STYLE
 from src.ui.gui.controllers.compression_controller import CompressionController
 from src.ui.gui.widgets.config_widgets import create_config_widget, read_widget_value
 from src.ui.gui.workers.compression_worker import CompressionWorker
@@ -42,6 +47,9 @@ class MainWindow(QMainWindow):
 
         self.compression_thread: QThread | None = None
         self.compression_worker: CompressionWorker | None = None
+
+        self.current_result = None
+        self.current_gui_result = None
 
         self._build_ui()
 
@@ -236,10 +244,49 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Results")
         layout = QVBoxLayout(box)
 
-        self.results_text = QTextEdit()
-        self.results_text.setReadOnly(True)
+        self.results_tabs = QTabWidget()
 
-        layout.addWidget(self.results_text)
+        self.metrics_table = QTableWidget(0, 3)
+        self.metrics_table.setHorizontalHeaderLabels(
+            ["Metric", "Value", "Unit"]
+        )
+        self.metrics_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch
+        )
+        self.metrics_table.setEditTriggers(QTableWidget.NoEditTriggers)
+
+        self.artifacts_widget = QWidget()
+        artifacts_layout = QFormLayout(self.artifacts_widget)
+
+        self.artifact_dir_edit = QLineEdit()
+        self.artifact_dir_edit.setReadOnly(True)
+
+        self.open_artifact_button = QPushButton("Open artifact folder")
+        self.open_artifact_button.setEnabled(False)
+        self.open_artifact_button.clicked.connect(self._on_open_artifact_folder)
+
+        artifacts_layout.addRow("Artifact directory", self.artifact_dir_edit)
+        artifacts_layout.addRow("", self.open_artifact_button)
+
+        self.preview_widget = QWidget()
+        preview_layout = QVBoxLayout(self.preview_widget)
+
+        self.preview_figure = Figure(figsize=(6, 3))
+        self.preview_canvas = FigureCanvas(self.preview_figure)
+
+        self.refresh_preview_button = QPushButton("Refresh preview")
+        self.refresh_preview_button.clicked.connect(self._show_preview)
+
+        preview_layout.addWidget(self.preview_canvas)
+        preview_layout.addWidget(self.refresh_preview_button)
+
+        self.results_tabs.addTab(self.preview_widget, "Preview")
+
+        self.results_tabs.addTab(self.metrics_table, "Metrics")
+        self.results_tabs.addTab(self.artifacts_widget, "Artifacts")
+        self.results_tabs.addTab(self.preview_widget, "Preview")
+
+        layout.addWidget(self.results_tabs)
 
         return box
 
@@ -277,9 +324,9 @@ class MainWindow(QMainWindow):
     def _on_clear_file(self):
         self.selected_hsi_path = None
         self.file_table.setRowCount(0)
-        self.results_text.clear()
         self.progress_bar.setValue(0)
         self.status_label.setText("Ready")
+        self._clear_results()
 
     def _on_run(self):
         if self.selected_hsi_path is None:
@@ -296,7 +343,7 @@ class MainWindow(QMainWindow):
         self.run_button.setEnabled(False)
         self.progress_bar.setValue(0)
         self.status_label.setText("Running compression...")
-        self.results_text.clear()
+        self._clear_results()
 
         self.compression_thread = QThread()
         self.compression_worker = CompressionWorker(
@@ -378,10 +425,120 @@ class MainWindow(QMainWindow):
         value = max(0.0, min(1.0, value))
         self.progress_bar.setValue(int(value * 100))
 
+    def _clear_results(self):
+        self.current_gui_result = None
+        self.current_result = None
+
+        self.metrics_table.setRowCount(0)
+        self.artifact_dir_edit.clear()
+        self.open_artifact_button.setEnabled(False)
+
+        self.preview_figure.clear()
+        self.preview_canvas.draw()
+
     def _show_result(self, result: dict):
-        lines = []
+        self.current_gui_result = result
+        self.current_result = result.get("result")
 
-        for key, value in result.items():
-            lines.append(f"{key}: {value}")
+        self._show_metrics(result.get("metrics", {}))
+        self._show_artifacts(result.get("artifact_dir"))
+        self._show_preview()
 
-        self.results_text.setPlainText("\n".join(lines))
+    def _show_metrics(self, metrics: dict):
+        self.metrics_table.setRowCount(0)
+
+        for row, (name, metric_data) in enumerate(metrics.items()):
+            value = metric_data.get("value")
+            unit = metric_data.get("unit")
+
+            if isinstance(value, float):
+                value_text = f"{value:.4f}"
+            else:
+                value_text = str(value)
+
+            unit_text = "" if unit is None else str(unit)
+
+            self.metrics_table.insertRow(row)
+            self.metrics_table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self.metrics_table.setItem(row, 1, QTableWidgetItem(value_text))
+            self.metrics_table.setItem(row, 2, QTableWidgetItem(unit_text))
+
+    def _show_artifacts(self, artifact_dir: str | None):
+        if artifact_dir is None:
+            self.artifact_dir_edit.setText("Not available")
+            self.open_artifact_button.setEnabled(False)
+            return
+
+        self.artifact_dir_edit.setText(artifact_dir)
+        self.open_artifact_button.setEnabled(True)
+
+    def _on_open_artifact_folder(self):
+        path = self.artifact_dir_edit.text().strip()
+
+        if not path or path == "Not available":
+            return
+
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(path)
+        )
+
+    def _show_preview(self):
+        self.preview_figure.clear()
+
+        if self.current_result is None:
+            self.preview_canvas.draw()
+            return
+
+        original = getattr(self.current_result, "original", None)
+        reconstructed = getattr(self.current_result, "reconstructed", None)
+
+        if original is None or reconstructed is None:
+            self.preview_canvas.draw()
+            return
+
+        axes = self.preview_figure.subplots(1, 2)
+
+        compare_rgb(
+            hsis=[original, reconstructed],
+            labels=["Original", "Reconstructed"],
+            style=DEFAULT_STYLE,
+            title="RGB Comparison",
+            axes=axes,
+        )
+
+        metric_text = self._preview_metrics_text()
+
+        add_panel_text(
+            ax=axes[1],
+            text=metric_text,
+            style=DEFAULT_STYLE,
+            x=0.02,
+            y=0.98,
+            bbox=True,
+        )
+
+        self.preview_figure.tight_layout()
+        self.preview_canvas.draw()
+
+    def _preview_metrics_text(self) -> str:
+        if self.current_gui_result is None:
+            return ""
+
+        metrics = self.current_gui_result.get("metrics", {})
+
+        values = {}
+        units = {}
+
+        for name, metric_data in metrics.items():
+            values[name] = metric_data.get("value")
+
+            unit = metric_data.get("unit")
+            if unit is not None:
+                units[name] = unit
+
+        return format_metrics_text(
+            values=values,
+            fields=("RMSE", "PSNR", "SAM", "CR"),
+            precision=2,
+            units=units,
+        )

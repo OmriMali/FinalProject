@@ -18,28 +18,24 @@ class CompressionController:
     def __init__(self):
         pass
 
-    def _create_runner(
-        self,
-        experiment_settings: dict,
-        progress_callback=None,
-        status_callback=None,
-    ) -> Runner:
+    def _create_runner(self, experiment_settings: dict, progress_callback= None, status_callback=None):
         results_dir = experiment_settings["results_dir"]
 
-        callbacks = [
-            ArtifactLoggerCallback(
-                results_dir=results_dir,
-                save_reconstructed=experiment_settings["save_reconstructed"],
-                save_compressed=experiment_settings["save_compressed"],
-                save_dictionary=False,
-                save_coefficients=False,
-                save_config=experiment_settings["save_config"],
-                save_metadata=experiment_settings["save_metadata"],
-            ),
-            CSVLoggerCallback(
-                results_dir=results_dir,
-            ),
-        ]
+        artifact_callback = ArtifactLoggerCallback(
+            results_dir=results_dir,
+            save_reconstructed=experiment_settings["save_reconstructed"],
+            save_compressed=experiment_settings["save_compressed"],
+            save_dictionary=False,
+            save_coefficients=False,
+            save_config=experiment_settings["save_config"],
+            save_metadata=experiment_settings["save_metadata"],
+        )
+
+        csv_callback = CSVLoggerCallback(
+            results_dir=results_dir,
+        )
+
+        callbacks = [artifact_callback, csv_callback]
 
         if progress_callback is not None:
             callbacks.append(
@@ -49,7 +45,9 @@ class CompressionController:
                 )
             )
 
-        return Runner(callbacks=callbacks)
+        runner = Runner(callbacks=callbacks)
+
+        return runner, artifact_callback
 
     def available_compressors(self) -> list[str]:
         """
@@ -118,7 +116,7 @@ class CompressionController:
             config_values=config_values,
         )
 
-        runner = self._create_runner(
+        runner, artifact_callback = self._create_runner(
             experiment_settings=experiment_settings,
             progress_callback=progress_callback,
             status_callback=status_callback,
@@ -131,7 +129,8 @@ class CompressionController:
             ber=experiment_settings["ber"],
         )
 
-        return self._format_result(result)
+        return self._format_result(result=result,
+                                   artifact_dir=artifact_callback.last_artifact_dir)
     
     def _load_hsi_from_path(self, hsi_path: Path):
         """
@@ -141,14 +140,49 @@ class CompressionController:
         name = hsi_path.stem
         return io.load_hsi(folder, name)
 
-    def _format_result(self, result) -> dict[str, Any]:
+    def _format_result(
+        self,
+        result,
+        artifact_dir: Path | str | None = None,
+    ) -> dict[str, Any]:
         """
         Convert CompressionRunResult into GUI-friendly values.
         """
-        output = {}
+        metrics = {}
 
         for name, metric in result.metrics.items():
             value = getattr(metric, "value", metric)
-            output[name] = value
+            unit = getattr(metric, "unit", None)
 
-        return output
+            metrics[name] = {
+                "value": value,
+                "unit": unit,
+            }
+
+        return {
+            "metrics": metrics,
+            "artifact_dir": None if artifact_dir is None else str(artifact_dir),
+            "result": result,
+        }
+
+    def _get_artifact_dir(self, result) -> str | None:
+        """
+        Try to extract the artifact directory from a run result.
+
+        This is intentionally defensive because the artifact path may be stored
+        differently depending on the logger/result implementation.
+        """
+        if hasattr(result, "artifact_dir"):
+            artifact_dir = getattr(result, "artifact_dir")
+            if artifact_dir is not None:
+                return str(artifact_dir)
+
+        if hasattr(result, "metadata"):
+            metadata = getattr(result, "metadata")
+
+            if isinstance(metadata, dict):
+                artifact_dir = metadata.get("artifact_dir")
+                if artifact_dir is not None:
+                    return str(artifact_dir)
+
+        return None

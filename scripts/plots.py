@@ -9,11 +9,11 @@ def main():
     ccsds_path = r"results\compression\ccsds123\log.csv"
 
     df = data_processing.load_logs([hybrid_path, hcs1d_path, ccsds_path])
-    df = data_processing.filter_by(df, experiment="comparison_1")
+    df = data_processing.filter_by(df, experiment="compressors_comparison")
 
-    rmse_v_cr = data_processing.aggregate_mean_std(
+    rmse_vs_cr = data_processing.aggregate_mean_std(
         df,
-        group_cols=["method", "sr", "a"],
+        group_cols=["method","sr","a"],
         value_cols=["rmse", "cr"]
     )
 
@@ -24,20 +24,26 @@ def main():
     )
 
     visuals.plot_metric_vs_metric(
-        rmse_v_cr,
+        rmse_vs_cr,
+        method_col="method",
         x="cr_mean",
-        xlabel="Compression Rate",
+        xerr="cr_std",
+        xlabel="cr",
         y="rmse_mean",
         yerr="rmse_std",
         ylabel="RMSE",
-        style=visuals.DARK_STYLE
+        title="RMSE vs Compression Ratio",
+        # show_legend=False,
+        style=visuals.DEFAULT_STYLE,
+        # plot_type="bar"
     )
 
     visuals.plot_runtime_comparison(
         times,
+        method_col="method",
         compression_error_col="comp_time_std",
         decompression_error_col="decomp_time_std",
-        style=visuals.DARK_STYLE
+        style=visuals.DEFAULT_STYLE
     )
 
     plt.show()

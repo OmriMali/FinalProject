@@ -42,11 +42,14 @@ class ArtifactLoggerCallback(RunnerCallback):
         self.save_config = save_config
         self.save_metadata = save_metadata
 
+        self.last_artifact_dir: Path | None = None
+
     def on_compression_end(
         self,
         result: CompressionRunResult,
     ) -> CompressionRunResult:
         artifact_dir = self._make_compression_dir(result)
+        self.last_artifact_dir = artifact_dir
 
         if self.save_reconstructed:
             save_hsi(
@@ -81,6 +84,7 @@ class ArtifactLoggerCallback(RunnerCallback):
         result: DictionaryTrainingResult,
     ) -> DictionaryTrainingResult:
         artifact_dir = self._make_dictionary_dir(result)
+        self.last_artifact_dir = artifact_dir
 
         if self.save_dictionary:
             save_dictionary(

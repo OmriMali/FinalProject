@@ -263,6 +263,7 @@ def compare_rgb(
     style: dict[str, Any] | None = None,
     title: str | None = None,
     figsize: tuple[float, float] | None = None,
+    axes: list[Axes] | np.ndarray | None = None,
 ):
     """
     Compare RGB visualizations of multiple hyperspectral images.
@@ -312,13 +313,21 @@ def compare_rgb(
 
     n_images = len(hsis)
 
-    fig, axes = plt.subplots(
-        1,
-        n_images,
-        figsize=figsize,
-        squeeze=False,
-    )
-    axes = axes.ravel()
+    if axes is None:
+        fig, axes = plt.subplots(
+            1,
+            n_images,
+            figsize=figsize,
+            squeeze=False,
+        )
+        axes = axes.ravel()
+    else:
+        axes = np.asarray(axes).ravel()
+
+        if len(axes) != n_images:
+            raise ValueError("Number of axes must match number of HSIs")
+
+        fig = axes[0].figure
 
     for ax, hsi, label in zip(axes, hsis, labels):
         plot_rgb(

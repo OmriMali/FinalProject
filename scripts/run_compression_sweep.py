@@ -28,10 +28,10 @@ def main():
     compressors_to_run = [
         "hcs1d",
         # "hcs3d",
-        # "hybrid",
+        "hybrid",
         # "ccsds123",
     ]
-    experiment = "hcs1d_transform_basis_sweep_3"
+    experiment = "compressors_comparison"
     ber = 0.0
     tags = None
     
@@ -39,7 +39,7 @@ def main():
     save_compressed = False
 
     use_split = False
-    repetitions = 3
+    repetitions = {"ccsds123": 1, "hcs1d": 10, "hybrid": 10}
 
     # ===== Paths =====
     split_csv = r"resources\splits\jasper_ridge_split_01.csv"
@@ -82,10 +82,10 @@ def main():
             "fixed": {
                 "axis": Axis.SPECTRAL,
                 "Phi": "BERNOULLI",
+                "Psi": learned_base,
                 "K": 3
             },
             "sweep": {
-                "Psi": [learned_base, "IDCT"],
                 "sr": [1/2, 1/4, 1/8, 1/16, 1/32],
             },
         },
@@ -109,10 +109,10 @@ def main():
         "ccsds123": {
             "config_cls": compressors.CCSDS123Config,
             "fixed": {
-                "local_sum_mode": "column",
                 "P": 2,
                 "Omega": 8,
                 "block_size": 32,
+                "local_sum_mode": "neighbor",
             },
             "sweep": {
                 "a": [4, 10, 40, 100, 400],
@@ -125,21 +125,24 @@ def main():
                 "K": 3,
                 "Phi": "BERNOULLI",
                 "Psi":learned_base,
+                "local_sum_mode":"neighbor",
                 "block_size": 32,
                 "protect_bitstream": False,
             },
             "sweep": {
-                "sr": [1/5, 1/10, 1/15, 1/20],
-                "Phi": ["BERNOULLI:p=0.1", "BERNOULLI:p=0.25", "BERNOULLI:p=0.5"]
+                "sr": [1/5, 1/10, 1/15, 1/20, 1/25],
+                # "local_sum_mode": ["hybrid_mean", "column", "neighbor"]
+                # "Phi": ["BERNOULLI:p=0.1", "BERNOULLI:p=0.25", "BERNOULLI:p=0.5"]
             }
         }
     }
-    # ===== Loop over repetitions =====
-    for _ in range(repetitions):
-        # ===== Loop over HSIs =====
-        for hsi in test_hsis:
-            # ===== Loop over compressor =====
-            for compressor_name in compressors_to_run:
+
+    # ===== Loop over HSIs =====
+    for hsi in test_hsis:
+        # ===== Loop over compressor =====
+        for compressor_name in compressors_to_run:
+            # ===== Loop over repetitions =====
+            for _ in range(repetitions[compressor_name]):
                 spec = experiments[compressor_name]
                 compressor_cls = compressors.registry.get_compressor(compressor_name)
                 # ===== Loop over sweep parameters =====

@@ -44,6 +44,7 @@ class HybridConfig(CompressorConfig):
     sr: float = 0.1
     Phi: str = "SUBSAMPLING"
     Psi: str = "IDCT"
+    local_sum_mode: str = 'hybrid_mean'
     block_size: int = 32
     protect_bitstream: bool = False
 
@@ -186,19 +187,51 @@ class Hybrid(Compressor):
         """
         Predict one sample from already reconstructed spatial neighbors.
         """
-        if y == 0 and x == 0:
-            return 0
+        H, W = S_rep_z.shape
         
-        if y == 0:
-            return int(S_rep_z[y, x-1])
-        
-        if x == 0:
-            return int(S_rep_z[y-1, x])
-        
-        left = int(S_rep_z[y, x-1])
-        up = int(S_rep_z[y-1, x])
+        def rep(xx, yy):
+            xx = min(max(xx, 0), W - 1)
+            yy = min(max(yy, 0), H - 1)
+            return int(S_rep_z[yy, xx])
 
-        return (left + up) // 2
+        # Retrieve mode, default to original if not specified
+        mode = getattr(self.config, 'local_sum_mode', 'hybrid_mean')
+
+        if mode == 'column':
+            if y > 0:
+                return rep(x, y-1)
+            elif x > 0:
+                return rep(x-1, y)
+            else:
+                return 0
+
+        elif mode == 'neighbor':
+            if y == 0 and x == 0:
+                return 0
+            elif y == 0:
+                return rep(x-1, y)
+            elif x == 0:
+                return (rep(x, y-1) + rep(x+1, y-1)) // 2
+            elif x == W - 1:
+                return (rep(x-1, y) + rep(x-1, y-1) + 2 * rep(x, y-1)) // 4
+            else:
+                return (rep(x-1, y) + rep(x-1, y-1) + rep(x, y-1) + rep(x+1, y-1)) // 4
+
+        # Default to original hybrid predictor (hybrid_mean)
+        else:
+            if y == 0 and x == 0:
+                return 0
+            
+            if y == 0:
+                return rep(x-1, y)
+            
+            if x == 0:
+                return rep(x, y-1)
+            
+            left = rep(x-1, y)
+            up = rep(x, y-1)
+
+            return (left + up) // 2
 
     def _encoder_predictor(self, S, report_callback=None):
         """

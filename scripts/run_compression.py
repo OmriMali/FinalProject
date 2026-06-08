@@ -9,9 +9,10 @@ from src.loggers.artifacts import ArtifactLoggerCallback
 def main():
 
     # ===== Run info =====
-    compressor_name = "ccsds123"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
-    experiment = "ccsds123_test"
-    ber = 0.000001
+    compressor_name = "hybrid"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
+    experiment = "hybrid_test"
+    # ber = 0.000001
+    ber=0
     tags = None
 
     save_reconstructed = True
@@ -54,6 +55,7 @@ def main():
             sr=0.05,
             Phi="GAUSSIAN",
             Psi=learned_base,
+            local_sum_mode="column",
             block_size=32,
             protect_bitstream=False
         )

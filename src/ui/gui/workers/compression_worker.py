@@ -1,55 +1,76 @@
-from pathlib import Path
+from __future__ import annotations
+
 from typing import Any
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.ui.gui.controllers.compression_controller import CompressionController
+from src.core.hsi import HSI
+from src.ui.gui.models.workspace_item import WorkspaceItem
+from src.ui.gui.services.compression_service import CompressionService
+from src.ui.gui.services.workspace_loader import (
+    WorkspaceLoader,
+    WorkspaceLoadError,
+)
 
 
 class CompressionWorker(QObject):
     """
-    Background worker for running one compression experiment.
+    Background worker for compression workflows.
     """
 
     progress_changed = Signal(float)
-    finished = Signal(dict)
+    progress_message_changed = Signal(str)
+    finished = Signal(object)
     failed = Signal(str)
-    status_changed = Signal(str)
 
     def __init__(
         self,
-        hsi_path: Path,
+        source_item: WorkspaceItem,
         compressor_name: str,
         config_values: dict[str, Any],
         experiment_settings: dict[str, Any],
     ):
         super().__init__()
 
-        self.hsi_path = hsi_path
+        self.source_item = source_item
         self.compressor_name = compressor_name
         self.config_values = config_values
         self.experiment_settings = experiment_settings
 
-        # Create controller inside the worker.
-        # This avoids sharing runner/compressor state between threads.
-        self.controller = CompressionController()
+        self.workspace_loader = WorkspaceLoader()
+        self.compression_service = CompressionService()
 
     @Slot()
     def run(self):
-        """
-        Run compression in the worker thread.
-        """
         try:
-            result = self.controller.run_compression(
-                hsi_path=self.hsi_path,
+            self.progress_message_changed.emit("Loading HSI")
+            self.progress_changed.emit(0.0)
+
+            obj = self.workspace_loader.load_object(self.source_item)
+
+            self.progress_changed.emit(0.02)
+
+            if not isinstance(obj, HSI):
+                raise WorkspaceLoadError(
+                    "Compress + Decompress requires an HSI item"
+                )
+
+            self.progress_message_changed.emit("Starting compression")
+
+            gui_result = self.compression_service.compress_and_decompress(
+                hsi=obj,
+                source_item=self.source_item,
                 compressor_name=self.compressor_name,
                 config_values=self.config_values,
                 experiment_settings=self.experiment_settings,
                 progress_callback=self.progress_changed.emit,
-                status_callback=self.status_changed.emit,
+                message_callback=self.progress_message_changed.emit,
             )
 
-            self.finished.emit(result)
+            self.progress_changed.emit(1.0)
+            self.progress_message_changed.emit("Finished")
+            self.finished.emit(gui_result)
 
         except Exception as exc:
+            self.progress_message_changed.emit("Failed")
             self.failed.emit(str(exc))

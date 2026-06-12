@@ -43,75 +43,102 @@ class ArtifactLoggerCallback(RunnerCallback):
         self.save_metadata = save_metadata
 
         self.last_artifact_dir: Path | None = None
+        self.last_artifact_paths: dict[str, Path] = {}
+
 
     def on_compression_end(
         self,
         result: CompressionRunResult,
     ) -> CompressionRunResult:
         artifact_dir = self._make_compression_dir(result)
+        
         self.last_artifact_dir = artifact_dir
+        self.last_artifact_paths = {}
 
         if self.save_reconstructed:
-            save_hsi(
+            rec_path = save_hsi(
                 result.reconstructed,
                 artifact_dir,
                 "reconstructed",
             )
+            self.last_artifact_paths["reconstructed"] = rec_path
 
         if self.save_compressed:
-            save_compressed_hsi(
+            compressed_path = save_compressed_hsi(
                 result.compressed,
                 artifact_dir,
                 "compressed",
             )
+            self.last_artifact_paths["compressed"] = compressed_path
 
         if self.save_config:
+            config_path = artifact_dir / "config.json",
             self._save_json(
-                artifact_dir / "config.json",
+                config_path,
                 result.run_metadata.algorithm_config,
             )
+            self.last_artifact_paths["config"] = config_path
 
         if self.save_metadata:
+            metadata_path = artifact_dir / "metadata.json",
             self._save_json(
-                artifact_dir / "metadata.json",
+                metadata_path,
                 self._compression_metadata(result),
             )
+            self.last_artifact_paths["metadata"] = metadata_path
 
         return self._with_artifact_dir(result, artifact_dir)
-
+    
     def on_dictionary_training_end(
         self,
         result: DictionaryTrainingResult,
     ) -> DictionaryTrainingResult:
         artifact_dir = self._make_dictionary_dir(result)
+
         self.last_artifact_dir = artifact_dir
+        self.last_artifact_paths = {}
 
         if self.save_dictionary:
-            save_dictionary(
+            dictionary_path = save_dictionary(
                 result.dictionary,
                 artifact_dir,
                 "dictionary",
             )
 
+            self.last_artifact_paths["dictionary"] = dictionary_path
+
         if self.save_coefficients:
+            coefficients_path = artifact_dir / "coefficients.npy"
+
             np.save(
-                artifact_dir / "coefficients.npy",
+                coefficients_path,
                 result.coefficients,
             )
 
+            self.last_artifact_paths["coefficients"] = coefficients_path
+
         if self.save_config:
+            config_path = artifact_dir / "config.json"
+
             self._save_json(
-                artifact_dir / "config.json",
+                config_path,
                 result.run_metadata.algorithm_config,
             )
 
+            self.last_artifact_paths["config"] = config_path
+
         if self.save_metadata:
+            metadata_path = artifact_dir / "metadata.json"
+
             self._save_json(
-                artifact_dir / "metadata.json",
+                metadata_path,
                 self._dictionary_metadata(result),
             )
 
+            self.last_artifact_paths["metadata"] = metadata_path
+
         return self._with_artifact_dir(result, artifact_dir)
+
 
     def _make_compression_dir(self, result: CompressionRunResult) -> Path:
         metadata = result.original.metadata

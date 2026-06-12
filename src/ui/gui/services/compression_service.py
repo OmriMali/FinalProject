@@ -22,7 +22,7 @@ class CompressionGuiResult:
     compressor_name: str
     result: Any
     artifact_dir: Path | None = None
-
+    artifact_paths: dict[str, Path] | None = None
 
 class CompressionService:
     """
@@ -61,17 +61,15 @@ class CompressionService:
             ber=experiment_settings["ber"],
         )
 
-        artifact_dir = getattr(
-            artifact_callback,
-            "last_artifact_dir",
-            None,
-        )
+        artifact_dir = artifact_callback.last_artifact_dir
+        artifact_paths = artifact_callback.last_artifact_paths
 
         return CompressionGuiResult(
             source_item=source_item,
             compressor_name=compressor_name,
             result=result,
             artifact_dir=artifact_dir,
+            artifact_paths=artifact_paths,
         )
 
     def _create_compressor(

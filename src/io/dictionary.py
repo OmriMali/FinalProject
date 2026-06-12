@@ -10,7 +10,7 @@ from src.io.common import make_npz_path, resolve_npz_path
 OBJECT_TYPE = "DICTIONARY"
 
 
-def save_dictionary(dictionary: Dictionary, directory: str | Path, name: str) -> None:
+def save_dictionary(dictionary: Dictionary, directory: str | Path, name: str) -> Path:
     """
     Save a dictionary object to ``directory / f"{name}.npz"``.
 
@@ -38,6 +38,8 @@ def save_dictionary(dictionary: Dictionary, directory: str | Path, name: str) ->
         object_type=OBJECT_TYPE,
         dictionary=dictionary_dict,
     )
+
+    return path
 
 
 def load_dictionary(directory: str | Path, name: str) -> Dictionary:

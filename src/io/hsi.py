@@ -11,7 +11,7 @@ from src.io.common import make_npz_path, resolve_npz_path, list_npz_files
 OBJECT_TYPE = "HSI"
 
 
-def save_hsi(hsi: HSI, directory: str | Path, name: str) -> None:
+def save_hsi(hsi: HSI, directory: str | Path, name: str) -> Path:
     """
     Save an HSI object to ``directory / f"{name}.npz"``.
 
@@ -34,6 +34,8 @@ def save_hsi(hsi: HSI, directory: str | Path, name: str) -> None:
         data=hsi.data,
         metadata=asdict(hsi.metadata),
     )
+
+    return path
 
 
 def load_hsi(directory: str | Path, name: str) -> HSI:

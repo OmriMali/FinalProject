@@ -1,4 +1,7 @@
 import math
+import json
+import sys
+import tempfile
 
 from pathlib import Path
 from dataclasses import fields, is_dataclass
@@ -9,7 +12,7 @@ from matplotlib.backends.backend_qtagg import (
 )
 from matplotlib.figure import Figure
 
-from PySide6.QtCore import Qt, QThread, QTimer
+from PySide6.QtCore import Qt, QTimer, QProcess
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -41,7 +44,6 @@ from src.compressors.registry import get_compressor, list_compressors
 
 from src.ui.gui.models.workspace_item import WorkspaceItem, WorkspaceItemKind, WorkspaceItemRole
 from src.ui.gui.services.workspace_loader import WorkspaceLoader, WorkspaceLoadError
-from src.ui.gui.workers.compression_worker import CompressionWorker
 from src.ui.gui.widgets.config_widgets import create_config_widget, read_widget_value
 from src.ui.gui.widgets.metrics_table import MetricsTableWidget
 
@@ -63,6 +65,8 @@ class MainWindow(QMainWindow):
 
         self.next_workspace_number = 1
 
+        self.abort_requested = False
+
         self.current_display_mode = None
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
@@ -75,8 +79,9 @@ class MainWindow(QMainWindow):
         self.workspace_items: list[WorkspaceItem] = []
         self.workspace_loader = WorkspaceLoader()
 
-        self.compression_thread = None
-        self.compression_worker = None
+        self.compression_process: QProcess | None = None
+        self.current_process_buffer = ""
+        
         self.is_running = False
 
         self._build_ui()
@@ -197,16 +202,20 @@ class MainWindow(QMainWindow):
         self.compress_button = QPushButton("Compress")
         self.decompress_button = QPushButton("Decompress")
         self.compress_decompress_button = QPushButton("Compress + Decompress")
+        self.abort_button = QPushButton("Abort")
 
         self.compress_decompress_button.clicked.connect(self._on_compress_decompress)
+        self.abort_button.clicked.connect(self._abort_compression_process)
 
         button_layout.addWidget(self.compress_button)
         button_layout.addWidget(self.decompress_button)
         button_layout.addWidget(self.compress_decompress_button)
+        button_layout.addWidget(self.abort_button)
 
         self.compress_button.setEnabled(False)
         self.decompress_button.setEnabled(False)
         self.compress_decompress_button.setEnabled(False)
+        self.abort_button.setEnabled(False)
 
         self.run_progress_bar = QProgressBar()
         self.run_progress_bar.setRange(0, 100)
@@ -245,7 +254,7 @@ class MainWindow(QMainWindow):
         headers = [""] + WorkspaceItem.table_headers()
 
         self.loaded_items_table = QTableWidget(0, len(headers))
-        self.loaded_items_table.setHorizontalHeaderLabels(headers)
+        self._set_table_headers(self.loaded_items_table, headers)
 
         header = self.loaded_items_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -409,12 +418,14 @@ class MainWindow(QMainWindow):
         )
         check_item.setCheckState(Qt.CheckState.Unchecked)
         check_item.setData(Qt.ItemDataRole.UserRole, item.item_id)
+        check_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
         self.loaded_items_table.setItem(row, 0, check_item)
 
         for col, value in enumerate(item.table_values(), start=1):
             table_item = QTableWidgetItem(str(value))
             table_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            table_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             self.loaded_items_table.setItem(row, col, table_item)
 
         self.loaded_items_table.blockSignals(False)
@@ -491,10 +502,8 @@ class MainWindow(QMainWindow):
         return separator
    
     def _set_run_progress(self, value: float):
-        if value <= 1.0:
-            value *= 100
-
-        self.run_progress_bar.setValue(int(value))
+        value = max(0.0, min(1.0, value))
+        self.run_progress_bar.setValue(int(value * 100))
 
     def _set_run_progress_message(self, message: str):
         if not message:
@@ -513,6 +522,7 @@ class MainWindow(QMainWindow):
             self.compress_button.setEnabled(False)
             self.decompress_button.setEnabled(False)
             self.compress_decompress_button.setEnabled(False)
+            self.abort_button.setEnabled(True)
 
             self.load_hsi_button.setEnabled(False)
             self.load_compressed_button.setEnabled(False)
@@ -526,13 +536,17 @@ class MainWindow(QMainWindow):
         self.remove_selected_button.setEnabled(True)
         self.clear_items_button.setEnabled(True)
 
-        self.run_status_label.setText("Ready")
+        self.abort_button.setEnabled(False)
+
         self._update_action_buttons()
 
-    def _on_compression_thread_finished(self):
-        self.compression_thread = None
-        self.compression_worker = None
-        self._set_running(False)
+    def _set_table_headers(self, table: QTableWidget, headers: list[str]):
+        table.setColumnCount(len(headers))
+
+        for col, header in enumerate(headers):
+            item = QTableWidgetItem(header)
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            table.setHorizontalHeaderItem(col, item)
 
     # ------------------------------------------------------------------
     # Loading actions
@@ -930,53 +944,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid settings", str(exc))
             return
 
-        self._start_compression_worker(
+        self._start_compression_process(
             source_item=item,
             compressor_name=self.compressor_combo.currentText(),
             config_values=config_values,
             experiment_settings=experiment_settings,
         )
-
-    def _on_compression_finished(self, gui_result):
-        self.run_progress_bar.setValue(100)
-
-        result = gui_result.result
-        method = gui_result.compressor_name
-        artifact_dir = gui_result.artifact_dir
-        source_name = gui_result.source_item.name
-
-        compressed_item = WorkspaceItem.from_compressed_hsi(
-            compressed=result.compressed,
-            name=f"{source_name}_{method}_compressed",
-            method=method,
-            directory=artifact_dir,
-            keep_cached=True,
-        )
-
-        reconstructed_item = WorkspaceItem.from_hsi(
-            hsi=result.reconstructed,
-            name=f"{source_name}_{method}_reconstructed",
-            role=WorkspaceItemRole.RECONSTRUCTION,
-            method=method,
-            directory=artifact_dir,
-            metrics=result.metrics,
-            keep_cached=True,
-        )
-
-        self.add_workspace_item(compressed_item)
-        self.add_workspace_item(reconstructed_item)
-
-        self.metrics_table.show_item_metrics(reconstructed_item)
-
-    def _on_compression_failed(self, message: str):
-        QMessageBox.critical(
-            self,
-            "Compression failed",
-            message,
-        )
-
-        if hasattr(self, "run_status_label"):
-            self.run_status_label.setText("Failed")
 
     # ------------------------------------------------------------------
     # Button Updating
@@ -1033,65 +1006,292 @@ class MainWindow(QMainWindow):
         self.compare_last_result_button.setEnabled(False)
 
     # ------------------------------------------------------------------
-    # Worker actions
+    # Process
     # ------------------------------------------------------------------
     
-    def _start_compression_worker(
+    def _start_compression_process(
         self,
         source_item: WorkspaceItem,
         compressor_name: str,
         config_values: dict,
         experiment_settings: dict,
     ):
+        
+        if self.compression_process is not None:
+            QMessageBox.warning(
+                self,
+                "Process already running",
+                "A compression process is already running.",
+            )
+            return
+        
+        if source_item.path is None:
+            QMessageBox.warning(
+                self,
+                "Cannot run compression",
+                "This item has no file path. Save or reload it from disk first.",
+            )
+            return
+
         self._set_running(True)
 
-        self.compression_thread = QThread(self)
-        self.compression_worker = CompressionWorker(
-            source_item=source_item,
-            compressor_name=compressor_name,
-            config_values=config_values,
-            experiment_settings=experiment_settings,
+        job = {
+            "source_path": str(source_item.path),
+            "compressor_name": compressor_name,
+            "config_values": self._make_json_safe(config_values),
+            "experiment_settings": experiment_settings,
+        }
+
+        job_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            delete=False,
+            encoding="utf-8",
         )
 
-        self.compression_worker.moveToThread(self.compression_thread)
+        self.current_job_path = Path(job_file.name)
 
-        self.compression_thread.started.connect(
-            self.compression_worker.run
-        )
+        with job_file:
+            json.dump(job, job_file)
 
-        self.compression_worker.progress_changed.connect(
-            self._set_run_progress
-        )
+        self.current_process_buffer = ""
 
-        self.compression_worker.progress_message_changed.connect(
-            self._set_run_progress_message
-        )
+        self.compression_process = QProcess(self)
+        self.compression_process.setProgram(sys.executable)
+        self.compression_process.setArguments([
+            "-m",
+            "src.ui.gui.processes.compression_job",
+            job_file.name,
+        ])
 
-        self.compression_worker.finished.connect(
-            self._on_compression_finished
+        self.compression_process.readyReadStandardOutput.connect(
+            self._on_process_stdout
         )
-        self.compression_worker.failed.connect(
-            self._on_compression_failed
+        self.compression_process.readyReadStandardError.connect(
+            self._on_process_stderr
         )
-
-        self.compression_worker.finished.connect(
-            self.compression_thread.quit
+        self.compression_process.finished.connect(
+            self._on_process_finished
         )
-        self.compression_worker.failed.connect(
-            self.compression_thread.quit
-        )
-
-        self.compression_thread.finished.connect(
-            self.compression_worker.deleteLater
-        )
-        self.compression_thread.finished.connect(
-            self.compression_thread.deleteLater
-        )
-        self.compression_thread.finished.connect(
-            self._on_compression_thread_finished
+        self.compression_process.errorOccurred.connect(
+            self._on_process_error
         )
 
-        self.compression_thread.start()
+        self.compression_process.start()
+
+    def _make_json_safe(self, value):
+        if isinstance(value, dict):
+            return {
+                key: self._make_json_safe(item)
+                for key, item in value.items()
+            }
+
+        if isinstance(value, tuple):
+            return [
+                self._make_json_safe(item)
+                for item in value
+            ]
+
+        if isinstance(value, list):
+            return [
+                self._make_json_safe(item)
+                for item in value
+            ]
+
+        if hasattr(value, "name") and hasattr(value, "value"):
+            return {
+                "__enum__": value.__class__.__name__,
+                "name": value.name,
+            }
+
+        return value
+
+    def _on_process_stdout(self):
+        if self.compression_process is None:
+            return
+
+        data = bytes(
+            self.compression_process.readAllStandardOutput()
+        ).decode("utf-8")
+
+        self.current_process_buffer += data
+
+        while "\n" in self.current_process_buffer:
+            line, self.current_process_buffer = (
+                self.current_process_buffer.split("\n", 1)
+            )
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            self._handle_process_message(payload)
+
+    def _handle_process_message(self, payload: dict):
+        message_type = payload.get("type")
+
+        if message_type == "progress":
+            self._set_run_progress(float(payload.get("value", 0.0)))
+            return
+
+        if message_type == "message":
+            self._set_run_progress_message(payload.get("message", "Running"))
+            return
+
+        if message_type == "error":
+            QMessageBox.critical(
+                self,
+                "Compression failed",
+                payload.get("message", "Unknown error"),
+            )
+            self._set_run_progress_message("Failed")
+            return
+
+        if message_type == "finished":
+            self._on_process_compression_finished(payload)
+            return
+
+    def _on_process_error(self, error):
+        self._set_run_progress_message(f"Process error: {error}")
+        self._set_running(False)
+        self.compression_process = None
+
+    def _on_process_stderr(self):
+        if self.compression_process is None:
+            return
+
+        data = bytes(
+            self.compression_process.readAllStandardError()
+        ).decode("utf-8")
+
+        if data.strip():
+            print(data)
+
+    def _on_process_finished(self, exit_code: int, exit_status):
+        self.compression_process = None
+
+        if getattr(self, "current_job_path", None) is not None:
+            self.current_job_path.unlink(missing_ok=True)
+            self.current_job_path = None
+
+        if self.abort_requested:
+            self._set_run_progress_message("Aborted")
+        elif exit_code == 0:
+            self.run_progress_bar.setValue(100)
+            self._set_run_progress_message("Finished")
+        else:
+            self._set_run_progress_message("Failed")
+
+        self.abort_requested = False
+        self._set_running(False)
+
+    def _abort_compression_process(self):
+
+        if self.compression_process is None:
+            return
+        
+        self.abort_requested = True
+        self._set_run_progress_message("Aborting...")
+
+        self.compression_process.terminate()
+
+        QTimer.singleShot(3000, self._kill_compression_process_if_needed)
+
+    def _kill_compression_process_if_needed(self):
+        if self.compression_process is None:
+            return
+
+        if self.compression_process.state() != QProcess.ProcessState.NotRunning:
+            self.compression_process.kill()
+            self._set_run_progress_message("Killed")
+
+    def _on_process_compression_finished(self, payload: dict):
+        method = payload.get("compressor_name", "unknown")
+        metrics = payload.get("metrics", {})
+
+        compressed_path = payload.get("compressed_path")
+        reconstructed_path = payload.get("reconstructed_path")
+
+        compressed_item = None
+        reconstructed_item = None
+
+        if compressed_path:
+            compressed_item = self._load_process_compressed_output(
+                Path(compressed_path),
+                method,
+            )
+
+        if reconstructed_path:
+            reconstructed_item = self._load_process_reconstructed_output(
+                Path(reconstructed_path),
+                method,
+                metrics,
+            )
+
+        if reconstructed_item is not None:
+            self.metrics_table.show_item_metrics(reconstructed_item)
+
+    def _load_process_reconstructed_output(
+        self,
+        path: Path,
+        method: str,
+        metrics: dict,
+    ) -> WorkspaceItem | None:
+        try:
+            item = self.workspace_loader.inspect_hsi(path)
+        except WorkspaceLoadError as exc:
+            QMessageBox.warning(
+                self,
+                "Could not load reconstructed output",
+                str(exc),
+            )
+            return None
+
+        item.role = WorkspaceItemRole.RECONSTRUCTION
+        item.method = method
+        item.metrics = self._deserialize_process_metrics(metrics)
+
+        self.add_workspace_item(item)
+
+        return item
+
+    def _load_process_compressed_output(
+        self,
+        path: Path,
+        method: str,
+    ) -> WorkspaceItem | None:
+        try:
+            item = self.workspace_loader.inspect_compressed_hsi(path)
+        except WorkspaceLoadError as exc:
+            QMessageBox.warning(
+                self,
+                "Could not load compressed output",
+                str(exc),
+            )
+            return None
+
+        item.method = method
+
+        self.add_workspace_item(item)
+
+        return item
+
+    def _deserialize_process_metrics(self, metrics: dict) -> dict:
+        from src.ui.gui.services.metrics_extractor import LoadedMetric
+
+        return {
+            name: LoadedMetric(
+                value=metric.get("value"),
+                unit=metric.get("unit", ""),
+            )
+            for name, metric in metrics.items()
+        }
 
     # ------------------------------------------------------------------
     # Metrics helpers

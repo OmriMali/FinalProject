@@ -10,7 +10,7 @@ from src.io.common import make_npz_path, resolve_npz_path
 OBJECT_TYPE = "COMPRESSED_HSI"
 
 
-def save_compressed_hsi(compressed: CompressedHSI, directory: str | Path, name: str) -> None:
+def save_compressed_hsi(compressed: CompressedHSI, directory: str | Path, name: str) -> Path:
     """
     Save a compressed HSI to ``directory / f"{name}.npz"``.
 
@@ -34,6 +34,8 @@ def save_compressed_hsi(compressed: CompressedHSI, directory: str | Path, name: 
         object_type=OBJECT_TYPE,
         payload=payload,
     )
+
+    return path
 
 
 def load_compressed_hsi(directory: str | Path, name: str) -> CompressedHSI:

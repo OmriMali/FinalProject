@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
+from PySide6.QtCore import Qt
 
 from src.ui.gui.models.workspace_item import WorkspaceItem
 
@@ -40,7 +41,7 @@ class MetricsTableWidget(QTableWidget):
         self.clear()
         self.setRowCount(0)
         self.setColumnCount(1)
-        self.setHorizontalHeaderLabels(["Item"])
+        self.setHorizontalHeaderLabels(["#"])
 
     def show_item_metrics(self, item: WorkspaceItem):
         self.show_metrics_comparison([item])
@@ -58,18 +59,18 @@ class MetricsTableWidget(QTableWidget):
 
         metric_names = self._ordered_metric_names(items)
 
-        headers = ["Item"] + metric_names
+        headers = ["#"] + metric_names
 
         self.clear()
         self.setColumnCount(len(headers))
-        self.setHorizontalHeaderLabels(headers)
+        self._set_headers(headers)
         self.setRowCount(len(items))
 
         for row, item in enumerate(items):
             self.setItem(
                 row,
                 0,
-                QTableWidgetItem(self._item_label(item)),
+                self._make_item(self._item_label(item)),
             )
 
             for col, metric_name in enumerate(metric_names, start=1):
@@ -110,9 +111,9 @@ class MetricsTableWidget(QTableWidget):
 
     def _item_label(self, item: WorkspaceItem) -> str:
         if item.number is not None:
-            return f"#{item.number} {item.name}"
+            return str(item.number)
 
-        return item.name
+        return "-"
 
     def _format_metric(self, metric: Any) -> str:
         value = getattr(metric, "value", metric)
@@ -130,3 +131,16 @@ class MetricsTableWidget(QTableWidget):
             return f"{value:.4f}"
 
         return str(value)
+    
+    def _set_headers(self, headers: list[str]):
+        self.setColumnCount(len(headers))
+
+        for col, header in enumerate(headers):
+            item = QTableWidgetItem(header)
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            self.setHorizontalHeaderItem(col, item)
+
+    def _make_item(self, value) -> QTableWidgetItem:
+        item = QTableWidgetItem(str(value))
+        item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        return item

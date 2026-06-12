@@ -8,6 +8,7 @@ from src.ui.gui.models.workspace_item import (
     WorkspaceItem,
     WorkspaceItemKind,
 )
+from src.ui.gui.services.metrics_extractor import MetricsExtractor
 
 
 class WorkspaceLoadError(RuntimeError):
@@ -25,19 +26,22 @@ class WorkspaceLoader:
     The loader keeps heavy object loading outside MainWindow.
     """
 
-    def inspect_hsi(self, path: Path) -> WorkspaceItem:
-        """
-        Inspect an HSI file and return a lightweight workspace item.
+    def __init__(self):
+        self.metrics_extractor = MetricsExtractor() 
 
-        Currently this loads the HSI once to obtain metadata, then discards
-        the heavy object. Later, this can be optimized with metadata-only IO.
-        """
+    def inspect_hsi(self, path: Path) -> WorkspaceItem:
         hsi = self._load_hsi_from_path(path)
+
+        metrics = self.metrics_extractor.extract_for_hsi(
+            hsi=hsi,
+            path=path,
+        )
 
         return WorkspaceItem.from_hsi(
             hsi=hsi,
             name=path.stem,
             path=path,
+            metrics=metrics,
             keep_cached=False,
         )
 

@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.hsi import HSI
-from src.core.dictionary import Axis
 from src.visuals.hsi import plot_rgb, select_rgb_bands, compare_spectra
 from src.visuals.style import DEFAULT_STYLE
 from src.compressors.registry import get_compressor, list_compressors
@@ -44,6 +43,7 @@ from src.ui.gui.models.workspace_item import WorkspaceItem, WorkspaceItemKind, W
 from src.ui.gui.services.workspace_loader import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.workers.compression_worker import CompressionWorker
 from src.ui.gui.widgets.config_widgets import create_config_widget, read_widget_value
+from src.ui.gui.widgets.metrics_table import MetricsTableWidget
 
 
 class MainWindow(QMainWindow):
@@ -353,19 +353,7 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Metrics")
         layout = QVBoxLayout(box)
 
-        self.metrics_table = QTableWidget(0, 3)
-        self.metrics_table.setHorizontalHeaderLabels(
-            [
-                "Metric",
-                "Value",
-                "Unit",
-            ]
-        )
-        self.metrics_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.Stretch
-        )
-        self.metrics_table.setEditTriggers(QTableWidget.NoEditTriggers)
-
+        self.metrics_table = MetricsTableWidget()
         layout.addWidget(self.metrics_table)
 
         return box
@@ -491,12 +479,6 @@ class MainWindow(QMainWindow):
             return None
 
         return checked[0]
-
-    def selected_workspace_items(self) -> list[WorkspaceItem]:
-        return self.checked_workspace_items()
-
-    def selected_workspace_item(self) -> WorkspaceItem | None:
-        return self.checked_workspace_item()
 
     # ------------------------------------------------------------------
     # UI helpers
@@ -845,23 +827,6 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
-    def _show_metrics_from_result(self, result):
-        self.metrics_table.setRowCount(0)
-
-        for row, (name, metric) in enumerate(result.metrics.items()):
-            value = getattr(metric, "value", metric)
-            unit = getattr(metric, "unit", "")
-
-            if isinstance(value, float):
-                value_text = f"{value:.4f}"
-            else:
-                value_text = str(value)
-
-            self.metrics_table.insertRow(row)
-            self.metrics_table.setItem(row, 0, QTableWidgetItem(str(name)))
-            self.metrics_table.setItem(row, 1, QTableWidgetItem(value_text))
-            self.metrics_table.setItem(row, 2, QTableWidgetItem(str(unit)))
-
     # ------------------------------------------------------------------
     # Experiment setting actions
     # ------------------------------------------------------------------
@@ -1001,7 +966,7 @@ class MainWindow(QMainWindow):
         self.add_workspace_item(compressed_item)
         self.add_workspace_item(reconstructed_item)
 
-        self._show_metrics_for_item(reconstructed_item)
+        self.metrics_table.show_item_metrics(reconstructed_item)
 
     def _on_compression_failed(self, message: str):
         QMessageBox.critical(
@@ -1139,80 +1104,4 @@ class MainWindow(QMainWindow):
             if item.metrics is not None
         ]
 
-        if not items:
-            return
-
-        if len(items) == 1:
-            self._show_metrics_for_item(items[0])
-            return
-
-        self._show_metrics_comparison(items)
-
-    def _show_metrics_for_item(self, item: WorkspaceItem):
-        self.metrics_table.clear()
-        self.metrics_table.setColumnCount(3)
-        self.metrics_table.setHorizontalHeaderLabels(
-            ["Metric", f"Item {item.number}", "Unit"]
-        )
-        self.metrics_table.setRowCount(0)
-
-        for row, (name, metric) in enumerate(item.metrics.items()):
-            value = getattr(metric, "value", metric)
-            unit = getattr(metric, "unit", "")
-
-            self.metrics_table.insertRow(row)
-            self.metrics_table.setItem(row, 0, QTableWidgetItem(str(name)))
-            self.metrics_table.setItem(row, 1, QTableWidgetItem(self._format_metric_value(value)))
-            self.metrics_table.setItem(row, 2, QTableWidgetItem(str(unit)))
-
-    def _show_metrics_comparison(self, items: list[WorkspaceItem]):
-        metric_names = sorted(
-            {
-                metric_name
-                for item in items
-                for metric_name in item.metrics.keys()
-            }
-        )
-
-        headers = ["Metric"] + [
-            f"#{item.number} {item.name}"
-            for item in items
-        ]
-
-        self.metrics_table.clear()
-        self.metrics_table.setColumnCount(len(headers))
-        self.metrics_table.setHorizontalHeaderLabels(headers)
-        self.metrics_table.setRowCount(len(metric_names))
-
-        for row, metric_name in enumerate(metric_names):
-            self.metrics_table.setItem(
-                row,
-                0,
-                QTableWidgetItem(str(metric_name)),
-            )
-
-            for col, item in enumerate(items, start=1):
-                metric = item.metrics.get(metric_name)
-
-                if metric is None:
-                    value_text = "-"
-                else:
-                    value = getattr(metric, "value", metric)
-                    unit = getattr(metric, "unit", "")
-                    value_text = self._format_metric_value(value)
-
-                    if unit:
-                        value_text = f"{value_text} {unit}"
-
-                self.metrics_table.setItem(
-                    row,
-                    col,
-                    QTableWidgetItem(value_text),
-                )
-
-    def _format_metric_value(self, value) -> str:
-        if isinstance(value, float):
-            return f"{value:.4f}"
-
-        return str(value)
-
+        self.metrics_table.show_metrics_comparison(items)

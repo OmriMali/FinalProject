@@ -21,6 +21,51 @@ from src.visuals.style import (
 )
 
 
+from typing import Any, Callable
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+
+from src.core.hsi import CompressedHSI
+from src.visuals.style import apply_plot_style
+
+
+def plot_compressed_histogram(
+    compressed: CompressedHSI,
+    decode_values: Callable[[CompressedHSI], np.ndarray],
+    bins: int = 256,
+    style: dict[str, Any] | None = None,
+    ax: Axes | None = None,
+    title: str | None = None,
+):
+    """
+    Plot a histogram of compressor-domain values.
+
+    The decoding logic is supplied by the compressor, because different
+    compressors encode different kinds of symbols.
+    """
+    values = decode_values(compressed).ravel()
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
+
+    ax.hist(values, bins=bins)
+
+    ax.set_xlabel("Compressed-domain value")
+    ax.set_ylabel("Count")
+
+    if title is None:
+        title = "Compressed HSI Histogram"
+
+    ax.set_title(title)
+
+    apply_plot_style(fig, ax, style)
+
+    return fig, ax
+
 def plot_rgb(
     hsi: HSI,
     bands: tuple[int, int, int] | None = None,

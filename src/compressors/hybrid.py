@@ -42,9 +42,9 @@ class HybridConfig(CompressorConfig):
     """
     K: int = 3
     sr: float = 0.1
-    Phi: str = "SUBSAMPLING"
-    Psi: str = "IDCT"
-    local_sum_mode: str = 'hybrid_mean'
+    Phi: str = "BERNOULLI"
+    Psi: str = "LEARNED"
+    local_sum_mode: str = 'neighbor'
     block_size: int = 32
     protect_bitstream: bool = False
 

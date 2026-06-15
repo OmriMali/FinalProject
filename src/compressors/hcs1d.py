@@ -35,11 +35,11 @@ class HCS1DConfig(CompressorConfig):
     Psi : str
         Sparse basis name.
     """
-    K: int = 30
-    sr: float = 0.5
+    K: int = 3
+    sr: float = 0.1
     axis: Axis = Axis.SPECTRAL
-    Phi: str = "SUBSAMPLING"
-    Psi: str = "IDCT"
+    Phi: str = "BERNOULLI"
+    Psi: str = "LEARNED"
 
 @register_compressor
 class HCS1D(Compressor):

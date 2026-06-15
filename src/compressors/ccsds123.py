@@ -36,7 +36,7 @@ class CCSDS123Config(CompressorConfig):
     protect_bitstream: bool
         Protect sensitive parts of bitstream from BER.
     """
-    local_sum_mode: str = 'column'
+    local_sum_mode: str = 'neighbor'
     P: int = 2
     Omega: int = 8
     a: int = 0

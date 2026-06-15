@@ -32,9 +32,9 @@ class HCS3DConfig(CompressorConfig):
         Sparse basis for each dimension (H, W, B).
     """
     K: int = 4000
-    sr: Tuple[float, float, float] = (0.5, 0.5, 0.5)
-    Phis: Tuple[str, str, str] = ("SUBSAMPLING", "SUBSAMPLING", "SUBSAMPLING")
-    Psis: Tuple[str, str, str] = ("IDCT", "IDCT", "IDCT")
+    sr: Tuple[float, float, float] = (0.5, 0.5, 0.1)
+    Phis: Tuple[str, str, str] = ("BERNOULLI", "BERNOULLI", "BERNOULLI")
+    Psis: Tuple[str, str, str] = ("IDCT", "IDCT", "LEARNED")
 
 @register_compressor
 class HCS3D(Compressor):

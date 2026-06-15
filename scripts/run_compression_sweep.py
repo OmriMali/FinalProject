@@ -32,7 +32,7 @@ def main():
         # "ccsds123",
     ]
     experiment = "compressors_comparison"
-    ber = 0.0
+    ber = 0
     tags = None
     
     save_reconstructed = False
@@ -50,7 +50,7 @@ def main():
     dict_name = "jasper_ridge_split_01_ksvd_400_atoms.npz"
 
     results_dir = r"results"
-
+    protect_bitstream=ber>0
     # ===== Load HSIs =====
     test_hsis = []
     if use_split:
@@ -113,6 +113,7 @@ def main():
                 "Omega": 8,
                 "block_size": 32,
                 "local_sum_mode": "neighbor",
+                "protect_bitstream": protect_bitstream,
             },
             "sweep": {
                 "a": [4, 10, 40, 100, 400],
@@ -127,10 +128,10 @@ def main():
                 "Psi":learned_base,
                 "local_sum_mode":"neighbor",
                 "block_size": 32,
-                "protect_bitstream": False,
+                "protect_bitstream": protect_bitstream,
             },
             "sweep": {
-                "sr": [1/5, 1/10, 1/15, 1/20, 1/25],
+                "sr": [(1/2)*1.3, (1/4)*1.3, (1/8)*1.3, (1/16)*1.3, (1/32)*1.3],
                 # "local_sum_mode": ["hybrid_mean", "column", "neighbor"]
                 # "Phi": ["BERNOULLI:p=0.1", "BERNOULLI:p=0.25", "BERNOULLI:p=0.5"]
             }

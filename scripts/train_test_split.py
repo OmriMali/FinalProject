@@ -7,12 +7,13 @@ def main():
     sections_dir = r"data\sections"
 
     splits_dir = r"resources\splits"
-    split_name = "jasper_ridge_split_01"
+    split_name = "mosfet_field_split_02"
 
-    scenes = ["JasperRidge",
-              #"MoffetField", 
-              # "Cuprite",
-              ]
+    scenes = [
+            # "JasperRidge",
+            "MoffetField", 
+            # "Cuprite",
+          ]
 
     test_ratio = 0.2
     seed = 42

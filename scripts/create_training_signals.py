@@ -4,12 +4,12 @@ from src.preprocessing.training_signals import sample_diverse_training_signals
 
 def main():
     # ===== Paths =====
-    split_csv = r"resources\splits\jasper_ridge_split_01.csv"
+    split_csv = r"resources\splits\mosfet_field_split_02.csv"
     output_dir = r"data\training_signals"
 
     # ===== Config =====
     split = "train"
-    name = "jasper_ridge_split_01_diverse_spectral"
+    name = "mosfet_field_split_01_diverse_spectral"
 
     threshold = 0.999
     max_signals = 5000

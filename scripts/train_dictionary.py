@@ -9,14 +9,14 @@ def main():
 
     # ===== Run info ====
     trainer_name = "ksvd"           # "ksvd"
-    experiment = "test1"
+    experiment = "test2"
 
     save_dictionary = True
     save_coefficients = True
 
     # ===== Paths =====
     signals_dir = r"data\training_signals"
-    signals_name = "jasper_ridge_split_01_diverse_spectral"
+    signals_name = "mosfet_field_split_01_diverse_spectral"
 
     results_dir = "results"
 

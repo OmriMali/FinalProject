@@ -132,7 +132,7 @@ class Runner:
         bitstream = compressed.bitstream
         mask = compressed.side_information.get("protection_mask")
         noised_bitstream = add_bit_noise(bitstream, ber, mask)
-        replace(compressed, bitstream=noised_bitstream)
+        compressed = replace(compressed, bitstream=noised_bitstream)
         
         compressor._progress_callback = self._make_progress_callback("decompression")
         start = perf_counter()

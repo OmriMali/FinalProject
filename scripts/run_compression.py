@@ -9,9 +9,8 @@ from src.loggers.artifacts import ArtifactLoggerCallback
 def main():
 
     # ===== Run info =====
-    compressor_name = "hybrid"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
-    experiment = "hybrid_test"
-    # ber = 0.000001
+    compressor_name = "hcs1d"           # "hcs1d", "hcs3d", "ccsds123", "hybrid"
+    experiment = "visual_test"
     ber=0
     tags = None
 
@@ -19,22 +18,22 @@ def main():
     save_compressed = False
 
     # ===== Paths =====
-    hsi_dir = r"data\sections\JasperRidge"
-    hsi_name = "JasperRidge_r6_c2"
+    hsi_dir =  r"data\sections\Cuprite"
+    hsi_name = "Cuprite_r7_c1"
 
     dict_dir = r"resources\dictionaries"
     dict_name = r"jasper_ridge_split_01_ksvd_400_atoms.npz"
     learned_base = f"LEARNED:directory={dict_dir},name={dict_name}"
 
     results_dir = r"results"
-
+    protect_bitstream=ber>0
     # ===== Configs =====
     configs = {
         "hcs1d": compressors.HCS1DConfig(
             K=3,
-            sr=0.05,
+            sr=0.08,
             axis=Axis.SPECTRAL,
-            Phi="SUBSAMPLING",
+            Phi="BERNOULLI",
             Psi=learned_base,
         ),
         "hcs3d": compressors.HCS3DConfig(
@@ -44,20 +43,21 @@ def main():
             Psis=("IDCT", "IDCT", learned_base),
         ),
         "ccsds123": compressors.CCSDS123Config(
-            local_sum_mode="column",
+            local_sum_mode="neighbor",
             P=2,
             Omega=8,
-            a=400,
+            a=500,
             block_size=32,
+            protect_bitstream=protect_bitstream,
         ),
         "hybrid": compressors.HybridConfig(
             K=3,
-            sr=0.05,
-            Phi="GAUSSIAN",
+            sr=0.12,
+            Phi="BERNOULLI",
             Psi=learned_base,
-            local_sum_mode="column",
+            local_sum_mode="neighbor",
             block_size=32,
-            protect_bitstream=False
+            protect_bitstream=protect_bitstream,
         )
     }
 

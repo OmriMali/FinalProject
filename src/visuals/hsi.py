@@ -28,24 +28,63 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 
 from src.core.hsi import CompressedHSI
+from src.compressors.base import Compressor
 from src.visuals.style import apply_plot_style
+
 
 
 def plot_compressed_histogram(
     compressed: CompressedHSI,
-    decode_values: Callable[[CompressedHSI], np.ndarray],
+    compressor: Compressor,
     bins: int = 256,
     style: dict[str, Any] | None = None,
     ax: Axes | None = None,
     title: str | None = None,
 ):
     """
-    Plot a histogram of compressor-domain values.
+    Plot a histogram of compressed-domain values.
 
-    The decoding logic is supplied by the compressor, because different
-    compressors encode different kinds of symbols.
+    The compressed-domain values are decoded using the compressor-specific
+    ``decode_compressed_values`` method. These values are not necessarily
+    reconstructed HSI pixel values; they may be measurements, residuals,
+    quantized residuals, coefficients, or other compressor-specific symbols.
+
+    Parameters
+    ----------
+    compressed : CompressedHSI
+        Compressed hyperspectral image object.
+
+    compressor : Compressor
+        Compressor instance used to decode the compressed-domain values.
+
+    bins : int, optional
+        Number of histogram bins.
+
+    style : dict | None, optional
+        Plot style dictionary.
+
+    ax : Axes | None, optional
+        Existing matplotlib axis. If None, a new figure and axis are created.
+
+    title : str | None, optional
+        Plot title.
+
+    Returns
+    -------
+    fig, ax
+        Matplotlib figure and axis.
     """
-    values = decode_values(compressed).ravel()
+    values = compressor.decode_compressed_values(compressed)
+    values = np.asarray(values).ravel()
+
+    if values.size == 0:
+        raise ValueError("Decoded compressed values are empty")
+
+    if np.issubdtype(values.dtype, np.floating):
+        values = values[np.isfinite(values)]
+
+        if values.size == 0:
+            raise ValueError("Decoded compressed values contain no finite values")
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -65,6 +104,7 @@ def plot_compressed_histogram(
     apply_plot_style(fig, ax, style)
 
     return fig, ax
+
 
 def plot_rgb(
     hsi: HSI,

@@ -37,8 +37,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
 )
 
-from src.core.hsi import HSI
-from src.visuals.hsi import plot_rgb, select_rgb_bands, compare_spectra
+from src.core.hsi import HSI, CompressedHSI
+from src.visuals.hsi import plot_rgb, select_rgb_bands, compare_spectra, plot_histogram, plot_compressed_histogram
 from src.visuals.style import DEFAULT_STYLE
 from src.compressors.registry import get_compressor, list_compressors
 
@@ -320,6 +320,10 @@ class MainWindow(QMainWindow):
         self.compare_last_result_button = QPushButton("Compare Last Result")
         self.plot_spectra_button = QPushButton("Plot Spectra")
         self.clear_canvas_button = QPushButton("Clear Canvas")
+            
+        self.plot_histogram_button = QPushButton("Histogram")
+        self.plot_histogram_button.clicked.connect(self._on_plot_histogram)
+        self.plot_histogram_button.setEnabled(False)
 
         self.spectrum_x_spin = QSpinBox()
         self.spectrum_x_spin.setRange(0, 10000)
@@ -352,6 +356,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.spectrum_y_spin)
 
         layout.addWidget(self.plot_spectra_button)
+
+        layout.addWidget(self.plot_spectra_button)
+        layout.addWidget(self.plot_histogram_button)
+        layout.addWidget(self.clear_canvas_button)
+
         layout.addStretch()
 
         layout.addWidget(self.clear_canvas_button)
@@ -626,7 +635,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self._display_rgb(obj, title=item.name)
+        self._display_rgb(obj, title=item.plot_label)
 
     def _display_rgb(self, hsi: HSI, title: str | None = None):
 
@@ -679,7 +688,7 @@ class MainWindow(QMainWindow):
                 return
 
             hsis.append(obj)
-            labels.append(item.name)
+            labels.append(item.plot_label)
 
         self._display_rgb_comparison(hsis, labels)
 
@@ -762,7 +771,7 @@ class MainWindow(QMainWindow):
                 return
 
             hsis.append(obj)
-            labels.append(item.name)
+            labels.append(item.plot_label)
 
         pixel = (
             self.spectrum_x_spin.value(),
@@ -841,6 +850,136 @@ class MainWindow(QMainWindow):
         except ValueError:
             pass
 
+    def _on_plot_histogram(self):
+        item = self.checked_workspace_item()
+
+        if item is None:
+            QMessageBox.warning(
+                self,
+                "Histogram",
+                "Please check exactly one item.",
+            )
+            return
+
+        try:
+            obj = self.workspace_loader.load_object(item)
+        except WorkspaceLoadError as exc:
+            QMessageBox.critical(self, "Load failed", str(exc))
+            return
+
+        if isinstance(obj, HSI):
+            self._display_hsi_histogram(
+                hsi=obj,
+                title=f"{item.plot_label}_Histogram",
+            )
+            return
+
+        if isinstance(obj, CompressedHSI):
+            self._display_compressed_histogram(
+                compressed=obj,
+                title=f"{item.plot_label}_Compressed_Histogram",
+            )
+            return
+
+        QMessageBox.warning(
+            self,
+            "Histogram",
+            "Selected item is not an HSI or CompressedHSI.",
+        )
+
+    def _display_hsi_histogram(
+        self,
+        hsi: HSI,
+        title: str | None = None,
+    ):
+        self.current_display_mode = "histogram"
+        self.current_spectra_hsis = None
+        self.current_spectra_labels = None
+
+        self.display_figure.clear()
+        ax = self.display_figure.add_subplot(1, 1, 1)
+
+        plot_histogram(
+            hsi=hsi,
+            band=None,
+            bins=256,
+            style=DEFAULT_STYLE,
+            ax=ax,
+            title=title,
+        )
+
+        self.display_figure.tight_layout()
+        self.display_canvas.draw_idle()
+
+    def _display_compressed_histogram(
+        self,
+        compressed: CompressedHSI,
+        title: str | None = None,
+    ):
+        try:
+            compressor = self._compressor_from_compressed_hsi(compressed)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Histogram",
+                f"Could not prepare compressed histogram decoder:\n{exc}",
+            )
+            return
+
+        self.current_display_mode = "compressed_histogram"
+        self.current_spectra_hsis = None
+        self.current_spectra_labels = None
+
+        self.display_figure.clear()
+        ax = self.display_figure.add_subplot(1, 1, 1)
+
+        try:
+            plot_compressed_histogram(
+                compressed=compressed,
+                compressor=compressor,
+                bins=256,
+                style=DEFAULT_STYLE,
+                ax=ax,
+                title=title,
+            )
+        except NotImplementedError as exc:
+            QMessageBox.warning(self, "Histogram", str(exc))
+            return
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Histogram",
+                f"Could not decode compressed values:\n{exc}",
+            )
+            return
+
+        self.display_figure.tight_layout()
+        self.display_canvas.draw_idle()
+
+    def _compressor_from_compressed_hsi(
+        self,
+        compressed: CompressedHSI,
+    ):
+        run_info = compressed.metadata.attributes.get("run")
+
+        if run_info is None:
+            raise ValueError(
+                "CompressedHSI metadata does not contain run information."
+            )
+
+        method = run_info.get("method")
+        algorithm_config = run_info.get("algorithm_config", {})
+
+        if not method:
+            raise ValueError(
+                "CompressedHSI run metadata does not contain a compressor method."
+            )
+
+        compressor_cls = get_compressor(method)
+        config = compressor_cls.Config(**algorithm_config)
+
+        return compressor_cls(config=config)
+
     # ------------------------------------------------------------------
     # Experiment setting actions
     # ------------------------------------------------------------------
@@ -877,7 +1016,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     # Compressor settings actions
-    # ------------------------------------------------------------------
+    # -------------------------------------s-----------------------------
 
     def _on_compressor_changed(self, compressor_name: str):
         self._clear_compressor_params_form()
@@ -965,6 +1104,7 @@ class MainWindow(QMainWindow):
             self.compare_selected_button.setEnabled(False)
             self.compare_last_result_button.setEnabled(False)
             self.plot_spectra_button.setEnabled(False)
+            self.plot_histogram_button.setEnabled(False)
             return
         
         checked_items = self.checked_workspace_items()
@@ -990,6 +1130,7 @@ class MainWindow(QMainWindow):
         # ------------------------------------------------------------
         exactly_one_hsi = n_checked == 1 and n_hsis == 1
         exactly_one_compressed = n_checked == 1 and n_compressed == 1
+        exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
 
         self.compress_button.setEnabled(False)
         self.compress_decompress_button.setEnabled(exactly_one_hsi)
@@ -1001,6 +1142,7 @@ class MainWindow(QMainWindow):
         self.show_rgb_button.setEnabled(exactly_one_hsi)
         self.plot_spectra_button.setEnabled(n_hsis >= 1 and n_compressed == 0)
         self.compare_selected_button.setEnabled(n_hsis >= 2 and n_compressed == 0)
+        self.plot_histogram_button.setEnabled(exactly_one_histogram_item)
 
         # This will be enabled later when we track the latest run result.
         self.compare_last_result_button.setEnabled(False)

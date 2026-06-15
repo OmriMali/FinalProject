@@ -176,6 +176,58 @@ class WorkspaceItem:
         ]
 
     @property
+    def plot_label(self) -> str:
+        parts = [
+            self._scene_slug(),
+            self._section_slug(),
+            self._method_slug(),
+        ]
+
+        return "_".join(part for part in parts if part)
+
+    def _scene_slug(self) -> str:
+        scene = self.metadata.scene_name
+
+        if scene is None and self.path is not None:
+            scene = self.path.stem
+
+        if scene is None:
+            scene = "HSI"
+
+        return _slug(scene)
+
+    def _section_slug(self) -> str:
+        row = getattr(self.metadata, "section_row", None)
+        col = getattr(self.metadata, "section_col", None)
+
+        if row is not None and col is not None:
+            return f"r{row}_c{col}"
+
+        section_idx = getattr(self.metadata, "section_idx", None)
+
+        if section_idx is not None:
+            return f"s{section_idx}"
+
+        return ""
+
+    def _method_slug(self) -> str:
+        method = self.method_text
+
+        if method == "-":
+            if self.role == WorkspaceItemRole.ORIGINAL:
+                return "Original"
+
+            if self.role == WorkspaceItemRole.RECONSTRUCTION:
+                return "Reconstruction"
+
+            if self.role == WorkspaceItemRole.COMPRESSED:
+                return "Compressed"
+
+            return ""
+
+        return _format_method_name(method)
+
+    @property
     def kind_text(self) -> str:
         return self.kind.value
 
@@ -302,3 +354,20 @@ def _dict_deep_get(data: dict, key: str) -> Any:
 
     return None
 
+def _slug(value: str) -> str:
+    return str(value).strip().replace(" ", "_")
+
+def _format_method_name(method: str) -> str:
+    method_map = {
+        "hcs1d": "HCS1D",
+        "hcs3d": "HCS3D",
+        "hybrid": "Hybrid",
+        "ccsds123": "CCSDS123",
+    }
+
+    key = str(method).lower()
+
+    if key in method_map:
+        return method_map[key]
+
+    return _slug(str(method))

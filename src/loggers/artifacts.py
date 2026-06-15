@@ -6,7 +6,8 @@ import re
 import numpy as np
 
 from src.pipeline.callbacks import RunnerCallback
-from src.core.results import CompressionRunResult, DictionaryTrainingResult
+from src.core.results import CompressionRunResult, DictionaryTrainingResult, RunMetadata
+from src.core.hsi import HSI
 from src.io import save_hsi, save_compressed_hsi, save_dictionary
 
 
@@ -55,11 +56,15 @@ class ArtifactLoggerCallback(RunnerCallback):
         self.last_artifact_dir = artifact_dir
         self.last_artifact_paths = {}
 
+        result = self._with_artifact_dir(result, artifact_dir)
+        result = self._with_reconstructed_run_info(result)
+        result = self._with_compressed_run_info(result)
+
         if self.save_reconstructed:
             rec_path = save_hsi(
                 result.reconstructed,
                 artifact_dir,
-                "reconstructed",
+                f"reconstructed",
             )
             self.last_artifact_paths["reconstructed"] = rec_path
 
@@ -72,7 +77,7 @@ class ArtifactLoggerCallback(RunnerCallback):
             self.last_artifact_paths["compressed"] = compressed_path
 
         if self.save_config:
-            config_path = artifact_dir / "config.json",
+            config_path = artifact_dir / "config.json"
             self._save_json(
                 config_path,
                 result.run_metadata.algorithm_config,
@@ -80,14 +85,14 @@ class ArtifactLoggerCallback(RunnerCallback):
             self.last_artifact_paths["config"] = config_path
 
         if self.save_metadata:
-            metadata_path = artifact_dir / "metadata.json",
+            metadata_path = artifact_dir / "metadata.json"
             self._save_json(
                 metadata_path,
                 self._compression_metadata(result),
             )
             self.last_artifact_paths["metadata"] = metadata_path
 
-        return self._with_artifact_dir(result, artifact_dir)
+        return result
     
     def on_dictionary_training_end(
         self,
@@ -207,6 +212,79 @@ class ArtifactLoggerCallback(RunnerCallback):
             result,
             run_metadata=run_metadata,
         )
+
+    def _with_reconstructed_run_info(
+        self,
+        result: CompressionRunResult,
+    ) -> CompressionRunResult:
+        """
+        Store run information inside the reconstructed HSI metadata attributes.
+        """
+        metadata = result.reconstructed.metadata
+
+        attributes = dict(metadata.attributes)
+
+        attributes["run"] = {
+            "timestamp": result.run_metadata.timestamp,
+            "machine": result.run_metadata.machine,
+            "method": result.run_metadata.algorithm_name,
+            "experiment": result.run_metadata.experiment,
+            "tags": result.run_metadata.tags,
+            "artifact_dir": result.run_metadata.artifact_dir,
+            "algorithm_config": result.run_metadata.algorithm_config,
+        }
+
+        updated_metadata = replace(
+            metadata,
+            attributes=attributes,
+        )
+
+        updated_reconstructed = HSI(
+            data=result.reconstructed.data,
+            metadata=updated_metadata,
+        )
+
+        return replace(
+            result,
+            reconstructed=updated_reconstructed,
+        )
+
+    def _with_compressed_run_info(
+        self,
+        result: CompressionRunResult,
+    ) -> CompressionRunResult:
+        """
+        Store run information inside the compressed HSI metadata attributes.
+        """
+        metadata = result.compressed.metadata
+
+        attributes = dict(metadata.attributes)
+
+        attributes["run"] = {
+            "timestamp": result.run_metadata.timestamp,
+            "machine": result.run_metadata.machine,
+            "method": result.run_metadata.algorithm_name,
+            "experiment": result.run_metadata.experiment,
+            "tags": result.run_metadata.tags,
+            "artifact_dir": result.run_metadata.artifact_dir,
+            "algorithm_config": result.run_metadata.algorithm_config,
+        }
+
+        updated_metadata = replace(
+            metadata,
+            attributes=attributes,
+        )
+
+        updated_compressed = replace(
+            result.compressed,
+            metadata=updated_metadata,
+        )
+
+        return replace(
+            result,
+            compressed=updated_compressed,
+        )
+
 
     def _compression_metadata(self, result: CompressionRunResult) -> dict:
         metadata = result.original.metadata

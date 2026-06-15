@@ -183,6 +183,10 @@ class Hybrid(Compressor):
 
         return reconstruction
 
+    def decode_compressed_values(self, compressed: CompressedHSI) -> np.ndarray:
+        return self._rice_decode(compressed.bitstream, compressed.side_information["y_shape"])
+
+
     def _predict_sample(self, S_rep_z, x: int, y: int) -> int:
         """
         Predict one sample from already reconstructed spatial neighbors.

@@ -176,6 +176,11 @@ class CCSDS123(Compressor):
 
         return reconstruction
 
+    def decode_compressed_values(self, compressed: CompressedHSI) -> np.ndarray:
+        return self._rice_decode(
+            compressed.bitstream,
+            compressed.metadata.shape,
+        )
 
     def _encoder_predictor(self, S, report_callback=None):
         """

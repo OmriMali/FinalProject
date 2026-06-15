@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from src.core.hsi import HSI, CompressedHSI
+import numpy as np
 
 
 
@@ -57,6 +58,20 @@ class Compressor(ABC):
             Reconstructed hyperspectral image.
         """
         raise NotImplementedError
+
+    def decode_compressed_values(
+        self,
+        compressed: CompressedHSI,
+    ) -> np.ndarray:
+        """
+        Decode compressed-domain values for diagnostics/visualization.
+
+        This does not have to reconstruct the image. It should return the
+        numeric symbols represented by the compressed bitstream.
+        """
+        raise NotImplementedError(
+            f"{self.name} does not support compressed-domain histogram decoding"
+        )
 
     def report_progress(self, value: float):
         """

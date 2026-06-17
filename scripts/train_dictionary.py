@@ -9,21 +9,33 @@ def main():
 
     # ===== Run info ====
     trainer_name = "ksvd"           # "ksvd"
+<<<<<<< HEAD
     experiment = "test2"
+=======
+    experiment = "test1"
+>>>>>>> master
 
     save_dictionary = True
     save_coefficients = True
 
     # ===== Paths =====
     signals_dir = r"data\training_signals"
+<<<<<<< HEAD
     signals_name = "mosfet_field_split_01_diverse_spectral"
+=======
+    signals_name = "cuprite_split_01_diverse_spectral"
+>>>>>>> master
 
     results_dir = "results"
 
     # ===== Configs =====
     configs = {
         "ksvd": dictionary_trainers.K_SVDConfig(
+<<<<<<< HEAD
         K=400,
+=======
+        K=380,
+>>>>>>> master
         T_0=3,
         tol=0.01,
         max_iter=50

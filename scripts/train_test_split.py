@@ -7,12 +7,21 @@ def main():
     sections_dir = r"data\sections"
 
     splits_dir = r"resources\splits"
+<<<<<<< HEAD
     split_name = "mosfet_field_split_02"
 
     scenes = [
             # "JasperRidge",
             "MoffetField", 
             # "Cuprite",
+=======
+    split_name = "cuprite_split_01"
+
+    scenes = [
+            # "JasperRidge",
+            # "MoffetField", 
+            "Cuprite",
+>>>>>>> master
           ]
 
     test_ratio = 0.2

@@ -1,0 +1,17 @@
+section_path,section_name,dataset,section_row,section_col,split
+data\sections\MoffetField\MoffetField_r4_c2.npz,MoffetField_r4_c2,MoffetField,4,2,test
+data\sections\MoffetField\MoffetField_r5_c2.npz,MoffetField_r5_c2,MoffetField,5,2,test
+data\sections\MoffetField\MoffetField_r3_c2.npz,MoffetField_r3_c2,MoffetField,3,2,test
+data\sections\MoffetField\MoffetField_r4_c1.npz,MoffetField_r4_c1,MoffetField,4,1,train
+data\sections\MoffetField\MoffetField_r8_c1.npz,MoffetField_r8_c1,MoffetField,8,1,train
+data\sections\MoffetField\MoffetField_r6_c1.npz,MoffetField_r6_c1,MoffetField,6,1,train
+data\sections\MoffetField\MoffetField_r7_c1.npz,MoffetField_r7_c1,MoffetField,7,1,train
+data\sections\MoffetField\MoffetField_r5_c1.npz,MoffetField_r5_c1,MoffetField,5,1,train
+data\sections\MoffetField\MoffetField_r1_c2.npz,MoffetField_r1_c2,MoffetField,1,2,train
+data\sections\MoffetField\MoffetField_r2_c1.npz,MoffetField_r2_c1,MoffetField,2,1,train
+data\sections\MoffetField\MoffetField_r7_c2.npz,MoffetField_r7_c2,MoffetField,7,2,train
+data\sections\MoffetField\MoffetField_r8_c2.npz,MoffetField_r8_c2,MoffetField,8,2,train
+data\sections\MoffetField\MoffetField_r3_c1.npz,MoffetField_r3_c1,MoffetField,3,1,train
+data\sections\MoffetField\MoffetField_r6_c2.npz,MoffetField_r6_c2,MoffetField,6,2,train
+data\sections\MoffetField\MoffetField_r1_c1.npz,MoffetField_r1_c1,MoffetField,1,1,train
+data\sections\MoffetField\MoffetField_r2_c2.npz,MoffetField_r2_c2,MoffetField,2,2,train

@@ -1,0 +1,1 @@
+from src.ui.gui.controllers.compression_controller import CompressionController

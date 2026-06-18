@@ -1,188 +1,250 @@
-from dataclasses import fields, is_dataclass
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+
 from pathlib import Path
-from typing import Any
 
-from src.compressors.registry import get_compressor, list_compressors
-from src.pipeline.runner import Runner
-from src import io
-from src.loggers import ArtifactLoggerCallback, CSVLoggerCallback
-
-from src.ui.gui.callbacks import GuiRunnerCallback
+from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 
-class CompressionController:
+class CompressionController(QObject):
     """
-    GUI-facing controller for compression workflows.
+    Runs compression jobs in a separate Python process.
+
+    The controller owns:
+    - QProcess lifecycle
+    - temporary job file
+    - stdout JSON parsing
+    - abort/kill behavior
+
+    The GUI owns:
+    - selecting source items
+    - displaying messages/progress
+    - loading returned artifacts into the workspace
     """
 
-    def __init__(self):
-        pass
+    started = Signal()
+    progress_changed = Signal(float)
+    message_changed = Signal(str)
+    failed = Signal(str)
+    finished_payload = Signal(dict)
+    run_ended = Signal(str)
 
-    def _create_runner(self, experiment_settings: dict, progress_callback= None, status_callback=None):
-        results_dir = experiment_settings["results_dir"]
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        artifact_callback = ArtifactLoggerCallback(
-            results_dir=results_dir,
-            save_reconstructed=experiment_settings["save_reconstructed"],
-            save_compressed=experiment_settings["save_compressed"],
-            save_dictionary=False,
-            save_coefficients=False,
-            save_config=experiment_settings["save_config"],
-            save_metadata=experiment_settings["save_metadata"],
-        )
+        self.process: QProcess | None = None
+        self.current_process_buffer = ""
+        self.current_job_path: Path | None = None
+        self.abort_requested = False
 
-        csv_callback = CSVLoggerCallback(
-            results_dir=results_dir,
-        )
+    @property
+    def is_running(self) -> bool:
+        return self.process is not None
 
-        callbacks = [artifact_callback, csv_callback]
-
-        if progress_callback is not None:
-            callbacks.append(
-                GuiRunnerCallback(
-                    progress_callback=progress_callback,
-                    status_callback=status_callback,
-                )
-            )
-
-        runner = Runner(callbacks=callbacks)
-
-        return runner, artifact_callback
-
-    def available_compressors(self) -> list[str]:
-        """
-        Return all registered compressor names.
-        """
-        return list_compressors()
-
-    def get_config_class(self, compressor_name: str):
-        """
-        Return the Config dataclass of a registered compressor.
-        """
-        compressor_cls = get_compressor(compressor_name)
-        return compressor_cls.Config
-    
-    def get_config_fields(self, compressor_name: str):
-        config_cls = self.get_config_class(compressor_name)
-
-        if not is_dataclass(config_cls):
-            raise TypeError(
-                f"Config for compressor '{compressor_name}' must be a dataclass"
-            )
-
-        return list(fields(config_cls))
-
-    def create_config(
-            self,
-            compressor_name: str,
-            config_values: dict[str, Any],
-        ):
-            """
-            Create a compressor Config object from GUI values.
-            """
-            config_cls = self.get_config_class(compressor_name)
-            return config_cls(**config_values)
-
-    def create_compressor(
+    def start(
         self,
+        source_path: Path,
         compressor_name: str,
-        config_values: dict[str, Any],
-        progress_callback=None,
+        config_values: dict,
+        experiment_settings: dict,
     ):
-        """
-        Create a compressor object from GUI values.
-        """
-        compressor_cls = get_compressor(compressor_name)
-        config = self.create_config(compressor_name, config_values)
+        if self.process is not None:
+            self.failed.emit("A compression process is already running.")
+            return
 
-        return compressor_cls(
-            config=config,
-            progress_callback=progress_callback,
-        )
-
-    def run_compression(
-        self,
-        hsi_path: Path,
-        compressor_name: str,
-        config_values: dict[str, Any],
-        experiment_settings: dict[str, Any],
-        progress_callback=None,
-        status_callback=None,
-    ) -> dict[str, Any]:
-        hsi = self._load_hsi_from_path(hsi_path)
-
-        compressor = self.create_compressor(
+        job_file_path = self._write_job_file(
+            source_path=source_path,
             compressor_name=compressor_name,
             config_values=config_values,
-        )
-
-        runner, artifact_callback = self._create_runner(
             experiment_settings=experiment_settings,
-            progress_callback=progress_callback,
-            status_callback=status_callback,
         )
 
-        result = runner.run_compression(
-            hsi=hsi,
-            compressor=compressor,
-            experiment=experiment_settings["experiment"],
-            ber=experiment_settings["ber"],
+        self.current_job_path = job_file_path
+        self.current_process_buffer = ""
+        self.abort_requested = False
+
+        self.process = QProcess(self)
+        self.process.setProgram(sys.executable)
+        self.process.setArguments(
+            [
+                "-m",
+                "src.ui.gui.processes.compression_job",
+                str(job_file_path),
+            ]
         )
 
-        return self._format_result(result=result,
-                                   artifact_dir=artifact_callback.last_artifact_dir)
-    
-    def _load_hsi_from_path(self, hsi_path: Path):
-        """
-        Load an HSI object from a selected GUI path.
-        """
-        folder = hsi_path.parent
-        name = hsi_path.stem
-        return io.load_hsi(folder, name)
+        self.process.readyReadStandardOutput.connect(self._on_stdout)
+        self.process.readyReadStandardError.connect(self._on_stderr)
+        self.process.finished.connect(self._on_finished)
+        self.process.errorOccurred.connect(self._on_error)
 
-    def _format_result(
+        self.started.emit()
+        self.message_changed.emit("Starting...")
+
+        self.process.start()
+
+    def abort(self):
+        if self.process is None:
+            return
+
+        self.abort_requested = True
+        self.message_changed.emit("Aborting...")
+
+        self.process.terminate()
+
+        QTimer.singleShot(3000, self._kill_if_needed)
+
+    def _write_job_file(
         self,
-        result,
-        artifact_dir: Path | str | None = None,
-    ) -> dict[str, Any]:
-        """
-        Convert CompressionRunResult into GUI-friendly values.
-        """
-        metrics = {}
-
-        for name, metric in result.metrics.items():
-            value = getattr(metric, "value", metric)
-            unit = getattr(metric, "unit", None)
-
-            metrics[name] = {
-                "value": value,
-                "unit": unit,
-            }
-
-        return {
-            "metrics": metrics,
-            "artifact_dir": None if artifact_dir is None else str(artifact_dir),
-            "result": result,
+        source_path: Path,
+        compressor_name: str,
+        config_values: dict,
+        experiment_settings: dict,
+    ) -> Path:
+        job = {
+            "source_path": str(source_path),
+            "compressor_name": compressor_name,
+            "config_values": self._make_json_safe(config_values),
+            "experiment_settings": experiment_settings,
         }
 
-    def _get_artifact_dir(self, result) -> str | None:
-        """
-        Try to extract the artifact directory from a run result.
+        job_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
+            delete=False,
+            encoding="utf-8",
+        )
 
-        This is intentionally defensive because the artifact path may be stored
-        differently depending on the logger/result implementation.
-        """
-        if hasattr(result, "artifact_dir"):
-            artifact_dir = getattr(result, "artifact_dir")
-            if artifact_dir is not None:
-                return str(artifact_dir)
+        with job_file:
+            json.dump(job, job_file)
 
-        if hasattr(result, "metadata"):
-            metadata = getattr(result, "metadata")
+        return Path(job_file.name)
 
-            if isinstance(metadata, dict):
-                artifact_dir = metadata.get("artifact_dir")
-                if artifact_dir is not None:
-                    return str(artifact_dir)
+    def _make_json_safe(self, value):
+        if isinstance(value, dict):
+            return {
+                key: self._make_json_safe(item)
+                for key, item in value.items()
+            }
 
-        return None
+        if isinstance(value, tuple):
+            return [
+                self._make_json_safe(item)
+                for item in value
+            ]
+
+        if isinstance(value, list):
+            return [
+                self._make_json_safe(item)
+                for item in value
+            ]
+
+        if hasattr(value, "name") and hasattr(value, "value"):
+            return {
+                "__enum__": value.__class__.__name__,
+                "name": value.name,
+            }
+
+        return value
+
+    def _on_stdout(self):
+        if self.process is None:
+            return
+
+        data = bytes(
+            self.process.readAllStandardOutput()
+        ).decode("utf-8")
+
+        self.current_process_buffer += data
+
+        while "\n" in self.current_process_buffer:
+            line, self.current_process_buffer = (
+                self.current_process_buffer.split("\n", 1)
+            )
+
+            line = line.strip()
+
+            if not line:
+                continue
+
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            self._handle_process_message(payload)
+
+    def _handle_process_message(self, payload: dict):
+        message_type = payload.get("type")
+
+        if message_type == "progress":
+            self.progress_changed.emit(float(payload.get("value", 0.0)))
+            return
+
+        if message_type == "message":
+            self.message_changed.emit(payload.get("message", "Running"))
+            return
+
+        if message_type == "error":
+            message = payload.get("message", "Unknown error")
+            self.failed.emit(message)
+            self.message_changed.emit("Failed")
+            return
+
+        if message_type == "finished":
+            self.finished_payload.emit(payload)
+            return
+
+    def _on_stderr(self):
+        if self.process is None:
+            return
+
+        data = bytes(
+            self.process.readAllStandardError()
+        ).decode("utf-8")
+
+        if data.strip():
+            print(data)
+
+    def _on_error(self, error):
+        self.failed.emit(f"Process error: {error}")
+        self.message_changed.emit(f"Process error: {error}")
+
+    def _on_finished(self, exit_code: int, exit_status):
+        self.process = None
+
+        self._cleanup_job_file()
+
+        if self.abort_requested:
+            status = "aborted"
+            self.message_changed.emit("Aborted")
+
+        elif exit_code == 0:
+            status = "finished"
+            self.progress_changed.emit(1.0)
+            self.message_changed.emit("Finished")
+
+        else:
+            status = "failed"
+            self.message_changed.emit("Failed")
+
+        self.abort_requested = False
+        self.run_ended.emit(status)
+
+    def _kill_if_needed(self):
+        if self.process is None:
+            return
+
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.kill()
+            self.message_changed.emit("Killed")
+
+    def _cleanup_job_file(self):
+        if self.current_job_path is None:
+            return
+
+        self.current_job_path.unlink(missing_ok=True)
+        self.current_job_path = None

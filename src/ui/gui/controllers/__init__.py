@@ -1,1 +1,3 @@
 from src.ui.gui.controllers.compression_controller import CompressionController
+from src.ui.gui.controllers.visualization_controller import VisualizationController
+from src.ui.gui.controllers.artifact_controller import ArtifactController

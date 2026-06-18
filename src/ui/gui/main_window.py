@@ -10,13 +10,10 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from src.core.hsi import HSI, CompressedHSI
-from src.compressors.registry import get_compressor
-
-from src.ui.gui.models import WorkspaceItem, WorkspaceItemKind, WorkspaceItemRole
+from src.ui.gui.models import WorkspaceItem, WorkspaceItemKind
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
-from src.ui.gui.controllers import CompressionController
+from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
 
 class MainWindow(QMainWindow):
     """
@@ -41,7 +38,19 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
+        self.visualization_controller = VisualizationController(
+            workspace_loader=self.workspace_loader,
+            results_tab=self.results_tab,
+            parent=self,
+            )
+        
+        self.artifact_controller = ArtifactController(
+            workspace_loader=self.workspace_loader,
+            parent=self,
+        )
+
         self._connect_compression_controller()
+        self._connect_artifact_controller()
 
 
     def _build_ui(self) -> None:
@@ -210,173 +219,24 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_show_rgb(self):
-        item = self.checked_workspace_item()
-
-        if item is None:
-            QMessageBox.warning(
-                self,
-                "Show RGB",
-                "Please check exactly one HSI item.",
-            )
-            return
-
-        try:
-            obj = self.workspace_loader.load_object(item)
-        except WorkspaceLoadError as exc:
-            QMessageBox.critical(self, "Load failed", str(exc))
-            return
-
-        if not isinstance(obj, HSI):
-            QMessageBox.warning(
-                self,
-                "Show RGB",
-                "The selected item is not an HSI.",
-            )
-            return
-
-        self.results_tab.display_rgb(obj, title=item.plot_label)
-
-    def _on_compare_selected(self):
-        items = self.checked_workspace_items()
-
-        if len(items) < 2:
-            QMessageBox.warning(
-                self,
-                "Compare Selected",
-                "Please check at least two HSI items.",
-            )
-            return
-
-        hsis = []
-        labels = []
-
-        for item in items:
-            try:
-                obj = self.workspace_loader.load_object(item)
-            except WorkspaceLoadError as exc:
-                QMessageBox.critical(self, "Load failed", str(exc))
-                return
-
-            if not isinstance(obj, HSI):
-                QMessageBox.warning(
-                    self,
-                    "Compare Selected",
-                    "Only HSI items can be compared.",
-                )
-                return
-
-            hsis.append(obj)
-            labels.append(item.plot_label)
-
-        self.results_tab.display_rgb_comparison(hsis, labels)
-
-    def _on_plot_spectra(self):
-        items = self.checked_workspace_items()
-
-        if not items:
-            QMessageBox.warning(
-                self,
-                "Plot Spectra",
-                "Please check at least one HSI item.",
-            )
-            return
-
-        hsis = []
-        labels = []
-
-        for item in items:
-            try:
-                obj = self.workspace_loader.load_object(item)
-            except WorkspaceLoadError as exc:
-                QMessageBox.critical(self, "Load failed", str(exc))
-                return
-
-            if not isinstance(obj, HSI):
-                QMessageBox.warning(
-                    self,
-                    "Plot Spectra",
-                    "Only HSI items can be used for spectral plots.",
-                )
-                return
-
-            hsis.append(obj)
-            labels.append(item.plot_label)
-
-        self.results_tab.start_spectra_plot(hsis, labels)
-
-    def _on_plot_histogram(self):
-        item = self.checked_workspace_item()
-
-        if item is None:
-            QMessageBox.warning(
-                self,
-                "Histogram",
-                "Please check exactly one item.",
-            )
-            return
-
-        try:
-            obj = self.workspace_loader.load_object(item)
-        except WorkspaceLoadError as exc:
-            QMessageBox.critical(self, "Load failed", str(exc))
-            return
-
-        if isinstance(obj, HSI):
-            self.results_tab.display_hsi_histogram(
-                hsi=obj,
-                title=f"{item.plot_label}_Histogram",
-            )
-            return
-
-        if isinstance(obj, CompressedHSI):
-            try:
-                compressor = self._compressor_from_compressed_hsi(obj)
-            except Exception as exc:
-                QMessageBox.warning(
-                    self,
-                    "Histogram",
-                    f"Could not prepare compressed histogram decoder:\n{exc}",
-                )
-                return
-
-            self.results_tab.display_compressed_histogram(
-                compressed=obj,
-                compressor=compressor,
-                title=f"{item.plot_label}_Compressed_Histogram",
-            )
-            return
-
-        QMessageBox.warning(
-            self,
-            "Histogram",
-            "Selected item is not an HSI or CompressedHSI.",
+        self.visualization_controller.show_rgb(
+            self.checked_workspace_items()
         )
 
-    def _compressor_from_compressed_hsi(
-        self,
-        compressed: CompressedHSI,
-    ):
-        run_info = compressed.metadata.attributes.get("run")
+    def _on_compare_selected(self):
+        self.visualization_controller.compare_selected(
+            self.checked_workspace_items()
+        )
 
-        if run_info is None:
-            raise ValueError(
-                "CompressedHSI metadata does not contain run information."
-            )
+    def _on_plot_spectra(self):
+        self.visualization_controller.plot_spectra(
+            self.checked_workspace_items()
+        )
 
-        method = run_info.get("method")
-        algorithm_config = run_info.get("algorithm_config", {})
-
-        if not method:
-            raise ValueError(
-                "CompressedHSI run metadata does not contain a compressor method."
-            )
-
-        compressor_cls = get_compressor(method)
-        config = compressor_cls.Config(**algorithm_config)
-
-        return compressor_cls(config=config)
-
-
+    def _on_plot_histogram(self):
+        self.visualization_controller.plot_histogram(
+            self.checked_workspace_items()
+        )
 
     # ------------------------------------------------------------------
     # Compression actions
@@ -490,7 +350,7 @@ class MainWindow(QMainWindow):
         )
 
         self.compression_controller.finished_payload.connect(
-            self._on_process_compression_finished
+            self.artifact_controller.handle_compression_finished
         )
 
         self.compression_controller.run_ended.connect(
@@ -541,80 +401,6 @@ class MainWindow(QMainWindow):
     def _abort_compression_process(self):
         self.compression_controller.abort()
 
-
-    def _on_process_compression_finished(self, payload: dict):
-        method = payload.get("compressor_name", "unknown")
-        metrics = payload.get("metrics", {})
-
-        reconstructed_path = payload.get("reconstructed_path")
-        reconstructed_item = None
-
-        if reconstructed_path:
-            reconstructed_item = self._load_process_reconstructed_output(
-                Path(reconstructed_path),
-                method,
-                metrics,
-            )
-
-        if reconstructed_item is not None:
-            self.results_tab.show_item_metrics(reconstructed_item)
-
-    def _load_process_reconstructed_output(
-        self,
-        path: Path,
-        method: str,
-        metrics: dict,
-    ) -> WorkspaceItem | None:
-        try:
-            item = self.workspace_loader.inspect_hsi(path)
-        except WorkspaceLoadError as exc:
-            QMessageBox.warning(
-                self,
-                "Could not load reconstructed output",
-                str(exc),
-            )
-            return None
-
-        item.role = WorkspaceItemRole.RECONSTRUCTION
-        item.method = method
-        item.metrics = self._deserialize_process_metrics(metrics)
-
-        self.add_workspace_item(item)
-
-        return item
-
-    def _load_process_compressed_output(
-        self,
-        path: Path,
-        method: str,
-    ) -> WorkspaceItem | None:
-        try:
-            item = self.workspace_loader.inspect_compressed_hsi(path)
-        except WorkspaceLoadError as exc:
-            QMessageBox.warning(
-                self,
-                "Could not load compressed output",
-                str(exc),
-            )
-            return None
-
-        item.method = method
-
-        self.add_workspace_item(item)
-
-        return item
-
-    def _deserialize_process_metrics(self, metrics: dict) -> dict:
-        from src.ui.gui.services.metrics_extractor import LoadedMetric
-
-        return {
-            name: LoadedMetric(
-                value=metric.get("value"),
-                unit=metric.get("unit", ""),
-            )
-            for name, metric in metrics.items()
-        }
-
     # ------------------------------------------------------------------
     # Metrics helpers
     # ------------------------------------------------------------------
@@ -627,3 +413,20 @@ class MainWindow(QMainWindow):
         ]
 
         self.results_tab.show_metrics_comparison(items)
+
+
+    def _connect_artifact_controller(self):
+        self.artifact_controller.item_ready.connect(
+            self.add_workspace_item
+        )
+
+        self.artifact_controller.metrics_item_ready.connect(
+            self.results_tab.show_item_metrics
+        )
+
+        self.artifact_controller.warning.connect(
+            self._show_warning
+        )
+
+    def _show_warning(self, title: str, message: str):
+        QMessageBox.warning(self, title, message)

@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QSplitter,
     QWidget,
     QFileDialog,
-    QMessageBox,
     QTabWidget,
 )
 
@@ -14,14 +13,14 @@ from src.ui.gui.models import WorkspaceItem, WorkspaceItemKind
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
 from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
+from src.ui.gui.utils import show_error, show_warning, show_info
 
 class MainWindow(QMainWindow):
     """
-    Main GUI window for hyperspectral image compression.
+    Main GUI shell for hyperspectral image compression.
 
-    This version defines only the visual layout. Application logic,
-    file loading, compression, decompression, plotting, and callbacks
-    should be connected later.
+    Owns the top-level layout, shared services, controllers, and signal wiring.
+    Workflow logic is delegated to widgets and controllers.
     """
 
     def __init__(self):
@@ -49,8 +48,7 @@ class MainWindow(QMainWindow):
             parent=self,
         )
 
-        self._connect_compression_controller()
-        self._connect_artifact_controller()
+        self._connect_signals()
 
 
     def _build_ui(self) -> None:
@@ -65,9 +63,6 @@ class MainWindow(QMainWindow):
         workspace_column = self._build_workspace_column()
         main_tabs = self._build_main_tabs()
 
-        # Cross-widget connections that require both widgets to exist.
-        self.workspace_panel.cleared.connect(self.results_tab.clear_canvas)
-
         splitter.addWidget(workspace_column)
         splitter.addWidget(main_tabs)
 
@@ -76,7 +71,6 @@ class MainWindow(QMainWindow):
         splitter.setSizes([420, 1080])
 
         root_layout.addWidget(splitter)
-
 
     def _build_main_tabs(self) -> QTabWidget:
         tabs = QTabWidget()
@@ -89,46 +83,17 @@ class MainWindow(QMainWindow):
 
     def _build_compression_tab(self) -> QWidget:
         self.compression_tab = CompressionTab()
-
-        self.compression_tab.compress_decompress_requested.connect(
-            self._on_compress_decompress
-        )
-        self.compression_tab.abort_requested.connect(
-            self._abort_compression_process
-        )
-
         return self.compression_tab
 
     def _build_results_tab(self) -> QWidget:
         self.results_tab = ResultsTab()
-
-        self.results_tab.show_rgb_requested.connect(self._on_show_rgb)
-        self.results_tab.compare_selected_requested.connect(
-            self._on_compare_selected
-        )
-        self.results_tab.plot_spectra_requested.connect(self._on_plot_spectra)
-        self.results_tab.plot_histogram_requested.connect(self._on_plot_histogram)
-
         return self.results_tab
-
 
     def _build_workspace_column(self) -> QWidget:
         self.workspace_panel = WorkspacePanel()
-
-        self.workspace_panel.load_hsi_requested.connect(self._on_load_hsi)
-        self.workspace_panel.load_compressed_hsi_requested.connect(
-            self._on_load_compressed_hsi
-        )
-
-        self.workspace_panel.selection_changed.connect(
-            self._on_workspace_selection_changed
-        )
-        self.workspace_panel.workspace_changed.connect(
-            self._on_workspace_changed
-        )
-
         return self.workspace_panel
     
+
     def _on_workspace_selection_changed(self):
         self._update_action_buttons()
         self._update_metrics_from_checked_items()
@@ -137,9 +102,9 @@ class MainWindow(QMainWindow):
         self._update_action_buttons()
         self._update_metrics_from_checked_items()
 
-    # ------------------------------------------------------------------
-    # Workspace item helpers
-    # ------------------------------------------------------------------
+
+
+
 
     def add_workspace_item(self, item: WorkspaceItem):
         self.workspace_panel.add_workspace_item(item)
@@ -153,9 +118,37 @@ class MainWindow(QMainWindow):
     def checked_workspace_item(self) -> WorkspaceItem | None:
         return self.workspace_panel.checked_workspace_item()
 
-    # ------------------------------------------------------------------
-    # UI helpers
-    # ------------------------------------------------------------------
+
+    def _connect_signals(self):
+        self.workspace_panel.load_hsi_requested.connect(self._on_load_hsi)
+        self.workspace_panel.load_compressed_hsi_requested.connect(
+            self._on_load_compressed_hsi
+        )
+        self.workspace_panel.selection_changed.connect(
+            self._on_workspace_selection_changed
+        )
+        self.workspace_panel.workspace_changed.connect(
+            self._on_workspace_changed
+        )
+        self.workspace_panel.cleared.connect(self.results_tab.clear_canvas)
+
+        self.compression_tab.compress_decompress_requested.connect(
+            self._on_compress_decompress
+        )
+        self.compression_tab.abort_requested.connect(
+            self._abort_compression
+        )
+
+        self.results_tab.show_rgb_requested.connect(self._on_show_rgb)
+        self.results_tab.compare_selected_requested.connect(
+            self._on_compare_selected
+        )
+        self.results_tab.plot_spectra_requested.connect(self._on_plot_spectra)
+        self.results_tab.plot_histogram_requested.connect(self._on_plot_histogram)
+
+        self._connect_compression_controller()
+        self._connect_artifact_controller()
+
 
    
     def _set_run_progress(self, value: float):
@@ -190,7 +183,7 @@ class MainWindow(QMainWindow):
         try:
             item = self.workspace_loader.inspect_hsi(Path(path))
         except WorkspaceLoadError as exc:
-            QMessageBox.critical(self, "Load failed", str(exc))
+            show_error(self, "Load failed", str(exc))
             return
 
         self.workspace_panel.add_workspace_item(item)
@@ -209,7 +202,7 @@ class MainWindow(QMainWindow):
         try:
             item = self.workspace_loader.inspect_compressed_hsi(Path(path))
         except WorkspaceLoadError as exc:
-            QMessageBox.critical(self, "Load failed", str(exc))
+            show_error(self, "Load failed", str(exc))
             return
 
         self.workspace_panel.add_workspace_item(item)
@@ -246,7 +239,7 @@ class MainWindow(QMainWindow):
         item = self.checked_workspace_item()
 
         if item is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Compress + Decompress",
                 "Please check exactly one HSI item.",
@@ -254,7 +247,7 @@ class MainWindow(QMainWindow):
             return
 
         if item.kind != WorkspaceItemKind.HSI:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Compress + Decompress",
                 "Compress + Decompress requires an HSI item.",
@@ -265,10 +258,10 @@ class MainWindow(QMainWindow):
             config_values = self.compression_tab.read_compressor_config_values()
             experiment_settings = self.compression_tab.read_experiment_settings()
         except ValueError as exc:
-            QMessageBox.warning(self, "Invalid settings", str(exc))
+            show_warning(self, "Invalid settings", str(exc))
             return
 
-        self._start_compression_process(
+        self._start_compression(
             source_item=item,
             compressor_name=self.compression_tab.current_compressor_name(),
             config_values=config_values,
@@ -354,21 +347,21 @@ class MainWindow(QMainWindow):
         )
 
         self.compression_controller.run_ended.connect(
-            self._on_compression_run_ended
+            self._on_compression_finished
         )
 
     def _on_compression_failed(self, message: str):
-        QMessageBox.critical(
+        show_error(
             self,
             "Compression failed",
             message,
         )
 
-    def _on_compression_run_ended(self, status: str):
+    def _on_compression_finished(self, status: str):
         self._set_running(False)
 
 
-    def _start_compression_process(
+    def _start_compression(
         self,
         source_item: WorkspaceItem,
         compressor_name: str,
@@ -376,7 +369,7 @@ class MainWindow(QMainWindow):
         experiment_settings: dict,
     ):
         if self.compression_controller.is_running:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Process already running",
                 "A compression process is already running.",
@@ -384,7 +377,7 @@ class MainWindow(QMainWindow):
             return
 
         if source_item.path is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Cannot run compression",
                 "This item has no file path. Save or reload it from disk first.",
@@ -398,7 +391,7 @@ class MainWindow(QMainWindow):
             experiment_settings=experiment_settings,
         )
 
-    def _abort_compression_process(self):
+    def _abort_compression(self):
         self.compression_controller.abort()
 
     # ------------------------------------------------------------------
@@ -429,4 +422,4 @@ class MainWindow(QMainWindow):
         )
 
     def _show_warning(self, title: str, message: str):
-        QMessageBox.warning(self, title, message)
+        show_warning(self, title, message)

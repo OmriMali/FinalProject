@@ -13,7 +13,7 @@ from src.ui.gui.models import WorkspaceItem, WorkspaceItemKind
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
 from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
-from src.ui.gui.utils import show_error, show_warning, show_info
+from src.ui.gui.utils import show_error, show_warning
 
 class MainWindow(QMainWindow):
     """
@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         )
 
         self._connect_signals()
+        self._update_action_buttons()
 
 
     def _build_ui(self) -> None:
@@ -81,162 +82,16 @@ class MainWindow(QMainWindow):
 
         return tabs
 
+    # ------------------------------------------------------------------
+    # Compression Tab
+    # ------------------------------------------------------------------
+
     def _build_compression_tab(self) -> QWidget:
         self.compression_tab = CompressionTab()
         return self.compression_tab
-
-    def _build_results_tab(self) -> QWidget:
-        self.results_tab = ResultsTab()
-        return self.results_tab
-
-    def _build_workspace_column(self) -> QWidget:
-        self.workspace_panel = WorkspacePanel()
-        return self.workspace_panel
-    
-
-    def _on_workspace_selection_changed(self):
-        self._update_action_buttons()
-        self._update_metrics_from_checked_items()
-
-    def _on_workspace_changed(self):
-        self._update_action_buttons()
-        self._update_metrics_from_checked_items()
-
-
-
-
-
-    def add_workspace_item(self, item: WorkspaceItem):
-        self.workspace_panel.add_workspace_item(item)
-
-    def clear_workspace_items(self):
-        self.workspace_panel.clear_workspace_items()
-
-    def checked_workspace_items(self) -> list[WorkspaceItem]:
-        return self.workspace_panel.checked_workspace_items()
-
-    def checked_workspace_item(self) -> WorkspaceItem | None:
-        return self.workspace_panel.checked_workspace_item()
-
-
-    def _connect_signals(self):
-        self.workspace_panel.load_hsi_requested.connect(self._on_load_hsi)
-        self.workspace_panel.load_compressed_hsi_requested.connect(
-            self._on_load_compressed_hsi
-        )
-        self.workspace_panel.selection_changed.connect(
-            self._on_workspace_selection_changed
-        )
-        self.workspace_panel.workspace_changed.connect(
-            self._on_workspace_changed
-        )
-        self.workspace_panel.cleared.connect(self.results_tab.clear_canvas)
-
-        self.compression_tab.compress_decompress_requested.connect(
-            self._on_compress_decompress
-        )
-        self.compression_tab.abort_requested.connect(
-            self._abort_compression
-        )
-
-        self.results_tab.show_rgb_requested.connect(self._on_show_rgb)
-        self.results_tab.compare_selected_requested.connect(
-            self._on_compare_selected
-        )
-        self.results_tab.plot_spectra_requested.connect(self._on_plot_spectra)
-        self.results_tab.plot_histogram_requested.connect(self._on_plot_histogram)
-
-        self._connect_compression_controller()
-        self._connect_artifact_controller()
-
-
-   
-    def _set_run_progress(self, value: float):
-        self.compression_tab.set_progress(value)
-
-    def _set_run_progress_message(self, message: str):
-        self.compression_tab.set_message(message)
-
-    def _set_running(self, running: bool):
-        self.is_running = running
-
-        self.compression_tab.set_running(running)
-        self.workspace_panel.set_controls_enabled(not running)
-
-        self._update_action_buttons()
-
-    # ------------------------------------------------------------------
-    # Loading actions
-    # ------------------------------------------------------------------
-        
-    def _on_load_hsi(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load HSI",
-            "",
-            "NumPy files (*.npz);;All files (*.*)",
-        )
-
-        if not path:
-            return
-
-        try:
-            item = self.workspace_loader.inspect_hsi(Path(path))
-        except WorkspaceLoadError as exc:
-            show_error(self, "Load failed", str(exc))
-            return
-
-        self.workspace_panel.add_workspace_item(item)
-
-    def _on_load_compressed_hsi(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Load CompressedHSI",
-            "",
-            "NumPy files (*.npz);;All files (*.*)",
-        )
-
-        if not path:
-            return
-
-        try:
-            item = self.workspace_loader.inspect_compressed_hsi(Path(path))
-        except WorkspaceLoadError as exc:
-            show_error(self, "Load failed", str(exc))
-            return
-
-        self.workspace_panel.add_workspace_item(item)
-
-    # ------------------------------------------------------------------
-    # Visualization actions
-    # ------------------------------------------------------------------
-
-    def _on_show_rgb(self):
-        self.visualization_controller.show_rgb(
-            self.checked_workspace_items()
-        )
-
-    def _on_compare_selected(self):
-        self.visualization_controller.compare_selected(
-            self.checked_workspace_items()
-        )
-
-    def _on_plot_spectra(self):
-        self.visualization_controller.plot_spectra(
-            self.checked_workspace_items()
-        )
-
-    def _on_plot_histogram(self):
-        self.visualization_controller.plot_histogram(
-            self.checked_workspace_items()
-        )
-
-    # ------------------------------------------------------------------
-    # Compression actions
-    # ------------------------------------------------------------------
     
     def _on_compress_decompress(self):
-        item = self.checked_workspace_item()
+        item = self.selected_workspace_item()
 
         if item is None:
             show_warning(
@@ -268,63 +123,117 @@ class MainWindow(QMainWindow):
             experiment_settings=experiment_settings,
         )
 
+    def _set_run_progress(self, value: float):
+        self.compression_tab.set_progress(value)
+
+    def _set_run_progress_message(self, message: str):
+        self.compression_tab.set_message(message)
+
+    def _set_running(self, running: bool):
+        self.is_running = running
+
+        self.compression_tab.set_running(running)
+        self.workspace_panel.set_controls_enabled(not running)
+
+        self._update_action_buttons()
+
     # ------------------------------------------------------------------
-    # Button Updating
+    # Results Tab
     # ------------------------------------------------------------------
 
-    def _update_action_buttons(self):
+    def _build_results_tab(self) -> QWidget:
+        self.results_tab = ResultsTab()
+        return self.results_tab
 
-        if self.is_running:
-            self.compression_tab.set_action_availability(
-                can_compress=False,
-                can_decompress=False,
-                can_compress_decompress=False,
-            )
-            self.results_tab.set_action_availability()
+    def _on_show_rgb(self):
+        self.visualization_controller.show_rgb(
+            self.selected_workspace_items()
+        )
+
+    def _on_show_band(self):
+        self.visualization_controller.show_band(
+            self.selected_workspace_items(),
+            band=self.results_tab.current_band(),
+        )
+
+    def _on_plot_spectra(self):
+        self.visualization_controller.plot_spectra(
+            self.selected_workspace_items()
+        )
+
+    def _on_plot_histogram(self):
+        self.visualization_controller.plot_histogram(
+            self.selected_workspace_items()
+        )
+
+    # ------------------------------------------------------------------
+    # Workspace Column
+    # ------------------------------------------------------------------
+
+    def _build_workspace_column(self) -> QWidget:
+        self.workspace_panel = WorkspacePanel()
+        return self.workspace_panel
+    
+    def _on_workspace_selection_changed(self):
+        self._update_action_buttons()
+        self._update_metrics_from_selected_items()
+
+    def _on_workspace_changed(self):
+        self._update_action_buttons()
+        self._update_metrics_from_selected_items()
+
+    def add_workspace_item(self, item: WorkspaceItem):
+        self.workspace_panel.add_workspace_item(item)
+
+    def clear_workspace_items(self):
+        self.workspace_panel.clear_workspace_items()
+
+    def selected_workspace_items(self) -> list[WorkspaceItem]:
+        return self.workspace_panel.selected_workspace_items()
+
+    def selected_workspace_item(self) -> WorkspaceItem | None:
+        return self.workspace_panel.selected_workspace_item()
+      
+    def _on_load_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Load HSI or CompressedHSI files",
+            "",
+            "NumPy files (*.npz);;All files (*.*)",
+        )
+
+        if not paths:
             return
 
-        checked_items = self.checked_workspace_items()
+        for path_text in paths:
+            path = Path(path_text)
 
-        checked_hsis = [
-            item
-            for item in checked_items
-            if item.kind == WorkspaceItemKind.HSI
-        ]
+            try:
+                item = self._inspect_workspace_file(path)
+            except WorkspaceLoadError as exc:
+                show_error(self, "Load failed", f"{path}\n\n{exc}")
+                continue
 
-        checked_compressed = [
-            item
-            for item in checked_items
-            if item.kind == WorkspaceItemKind.COMPRESSED_HSI
-        ]
+            self.workspace_panel.add_workspace_item(item)
 
-        n_checked = len(checked_items)
-        n_hsis = len(checked_hsis)
-        n_compressed = len(checked_compressed)
-
-        exactly_one_hsi = n_checked == 1 and n_hsis == 1
-        exactly_one_compressed = n_checked == 1 and n_compressed == 1
-        exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
-
-    
-        self.compression_tab.set_action_availability(
-            can_compress=False,
-            can_decompress=False,
-            can_compress_decompress=exactly_one_hsi,
-        )
-
-        self.results_tab.set_action_availability(
-            can_show_rgb=exactly_one_hsi,
-            can_compare_selected=n_hsis >= 2 and n_compressed == 0,
-            can_compare_last_result=False,
-            can_plot_spectra=n_hsis >= 1 and n_compressed == 0,
-            can_plot_histogram=exactly_one_histogram_item,
-        )
+    def _inspect_workspace_file(self, path: Path) -> WorkspaceItem:
+        try:
+            return self.workspace_loader.inspect_hsi(path)
+        except WorkspaceLoadError as hsi_error:
+            try:
+                return self.workspace_loader.inspect_compressed_hsi(path)
+            except WorkspaceLoadError as compressed_error:
+                raise WorkspaceLoadError(
+                    "File could not be loaded as either HSI or CompressedHSI.\n\n"
+                    f"HSI error: {hsi_error}\n\n"
+                    f"CompressedHSI error: {compressed_error}"
+                )
 
 
     # ------------------------------------------------------------------
-    # Process
+    # Process Handling
     # ------------------------------------------------------------------
-        
+
     def _connect_compression_controller(self):
         self.compression_controller.started.connect(
             lambda: self._set_running(True)
@@ -360,7 +269,6 @@ class MainWindow(QMainWindow):
     def _on_compression_finished(self, status: str):
         self._set_running(False)
 
-
     def _start_compression(
         self,
         source_item: WorkspaceItem,
@@ -395,18 +303,81 @@ class MainWindow(QMainWindow):
         self.compression_controller.abort()
 
     # ------------------------------------------------------------------
-    # Metrics helpers
+    # General
     # ------------------------------------------------------------------
+
+    def _update_action_buttons(self):
+
+        if self.is_running:
+            self.compression_tab.set_action_availability(
+                can_compress=False,
+                can_decompress=False,
+                can_compress_decompress=False,
+            )
+            self.results_tab.set_action_availability()
+            return
+
+        selected_items = self.selected_workspace_items()
+
+        selected_hsis = [
+            item
+            for item in selected_items
+            if item.kind == WorkspaceItemKind.HSI
+        ]
+
+        selected_compressed = [
+            item
+            for item in selected_items
+            if item.kind == WorkspaceItemKind.COMPRESSED_HSI
+        ]
+
+        n_selected = len(selected_items)
+        n_hsis = len(selected_hsis)
+        n_compressed = len(selected_compressed)
+
+        exactly_one_hsi = n_selected == 1 and n_hsis == 1
+        exactly_one_compressed = n_selected == 1 and n_compressed == 1
+        exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
+
     
-    def _update_metrics_from_checked_items(self):
+        self.compression_tab.set_action_availability(
+            can_compress=False,
+            can_decompress=False,
+            can_compress_decompress=exactly_one_hsi,
+        )
+
+        self.results_tab.set_action_availability(
+            can_show_rgb=n_hsis >= 1 and n_compressed == 0,
+            can_show_band=n_hsis >= 1 and n_compressed == 0,
+            can_plot_spectra=n_hsis >= 1 and n_compressed == 0,
+            can_plot_histogram=exactly_one_histogram_item,
+        )
+
+    def _connect_signals(self):
+        self.workspace_panel.load_requested.connect(self._on_load_files)
+        self.workspace_panel.selection_changed.connect(self._on_workspace_selection_changed)
+        self.workspace_panel.workspace_changed.connect(self._on_workspace_changed)
+        self.workspace_panel.cleared.connect(self.results_tab.clear_canvas)
+
+        self.compression_tab.compress_decompress_requested.connect(self._on_compress_decompress)
+        self.compression_tab.abort_requested.connect(self._abort_compression)
+
+        self.results_tab.show_rgb_requested.connect(self._on_show_rgb)
+        self.results_tab.show_band_requested.connect(self._on_show_band)
+        self.results_tab.plot_spectra_requested.connect(self._on_plot_spectra)
+        self.results_tab.plot_histogram_requested.connect(self._on_plot_histogram)
+
+        self._connect_compression_controller()
+        self._connect_artifact_controller()
+
+    def _update_metrics_from_selected_items(self):
         items = [
             item
-            for item in self.checked_workspace_items()
+            for item in self.selected_workspace_items()
             if item.metrics is not None
         ]
 
         self.results_tab.show_metrics_comparison(items)
-
 
     def _connect_artifact_controller(self):
         self.artifact_controller.item_ready.connect(

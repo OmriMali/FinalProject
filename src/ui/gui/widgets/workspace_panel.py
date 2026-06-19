@@ -23,8 +23,7 @@ class WorkspacePanel(QWidget):
     Owns the workspace item list and checked-item selection state.
     """
 
-    load_hsi_requested = Signal()
-    load_compressed_hsi_requested = Signal()
+    load_requested = Signal()
 
     workspace_changed = Signal()
     selection_changed = Signal()
@@ -50,24 +49,16 @@ class WorkspacePanel(QWidget):
         box = QGroupBox("File Controls")
         layout = QHBoxLayout(box)
 
-        self.load_hsi_button = QPushButton("Load HSI")
-        self.load_compressed_button = QPushButton("Load CompressedHSI")
+        self.load_button = QPushButton("Load")
         self.remove_selected_button = QPushButton("Remove Selected")
         self.clear_items_button = QPushButton("Clear")
 
-        self.load_hsi_button.clicked.connect(self.load_hsi_requested.emit)
-        self.load_compressed_button.clicked.connect(
-            self.load_compressed_hsi_requested.emit
-        )
-        self.remove_selected_button.clicked.connect(
-            self.remove_checked_items
-        )
-        self.clear_items_button.clicked.connect(
-            self.clear_workspace_items
-        )
+        self.load_button.clicked.connect(self.load_requested.emit)
 
-        layout.addWidget(self.load_hsi_button)
-        layout.addWidget(self.load_compressed_button)
+        self.remove_selected_button.clicked.connect(self.remove_checked_items)
+        self.clear_items_button.clicked.connect(self.clear_workspace_items)
+
+        layout.addWidget(self.load_button)
         layout.addWidget(self.remove_selected_button)
         layout.addWidget(self.clear_items_button)
         layout.addStretch()
@@ -156,7 +147,7 @@ class WorkspacePanel(QWidget):
         self.workspace_changed.emit()
         self.selection_changed.emit()
 
-    def checked_workspace_items(self) -> list[WorkspaceItem]:
+    def selected_workspace_items(self) -> list[WorkspaceItem]:
         checked_ids = set()
 
         for row in range(self.loaded_items_table.rowCount()):
@@ -175,8 +166,8 @@ class WorkspacePanel(QWidget):
             if item.item_id in checked_ids
         ]
 
-    def checked_workspace_item(self) -> WorkspaceItem | None:
-        checked = self.checked_workspace_items()
+    def selected_workspace_item(self) -> WorkspaceItem | None:
+        checked = self.selected_workspace_items()
 
         if len(checked) != 1:
             return None
@@ -184,8 +175,7 @@ class WorkspacePanel(QWidget):
         return checked[0]
 
     def set_controls_enabled(self, enabled: bool):
-        self.load_hsi_button.setEnabled(enabled)
-        self.load_compressed_button.setEnabled(enabled)
+        self.load_button.setEnabled(enabled)
         self.remove_selected_button.setEnabled(enabled)
         self.clear_items_button.setEnabled(enabled)
 

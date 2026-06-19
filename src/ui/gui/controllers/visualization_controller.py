@@ -38,36 +38,10 @@ class VisualizationController:
         self.parent = parent
 
     def show_rgb(self, items: list[WorkspaceItem]):
-        item = self._single_item(
-            items,
-            title="Show RGB",
-            message="Please check exactly one HSI item.",
-        )
-
-        if item is None:
-            return
-
-        obj = self._load_object(item)
-        if obj is None:
-            return
-
-        if not isinstance(obj, HSI):
+        if not items:
             self._warn(
                 "Show RGB",
-                "The selected item is not an HSI.",
-            )
-            return
-
-        self.results_tab.display_rgb(
-            obj,
-            title=item.plot_label,
-        )
-
-    def compare_selected(self, items: list[WorkspaceItem]):
-        if len(items) < 2:
-            self._warn(
-                "Compare Selected",
-                "Please check at least two HSI items.",
+                "Please check at least one HSI item.",
             )
             return
 
@@ -81,15 +55,73 @@ class VisualizationController:
 
             if not isinstance(obj, HSI):
                 self._warn(
-                    "Compare Selected",
-                    "Only HSI items can be compared.",
+                    "Show RGB",
+                    "Only HSI items can be displayed as RGB.",
                 )
                 return
 
             hsis.append(obj)
             labels.append(item.plot_label)
 
+        if len(hsis) == 1:
+            self.results_tab.display_rgb(
+                hsis[0],
+                title=labels[0],
+            )
+            return
+
         self.results_tab.display_rgb_comparison(hsis, labels)
+
+    def show_band(
+        self,
+        items: list[WorkspaceItem],
+        band: int,
+    ):
+        if not items:
+            self._warn(
+                "Show Band",
+                "Please check at least one HSI item.",
+            )
+            return
+
+        hsis = []
+        labels = []
+
+        for item in items:
+            obj = self._load_object(item)
+            if obj is None:
+                return
+
+            if not isinstance(obj, HSI):
+                self._warn(
+                    "Show Band",
+                    "Only HSI items can be displayed by band.",
+                )
+                return
+
+            hsis.append(obj)
+            labels.append(item.plot_label)
+
+        self.results_tab.set_band_limits_for_hsis(hsis)
+        band = self.results_tab.current_band()
+
+        try:
+            if len(hsis) == 1:
+                self.results_tab.display_band(
+                    hsi=hsis[0],
+                    band=band,
+                    label=labels[0],
+                )
+                return
+
+            self.results_tab.display_band_comparison(
+                hsis=hsis,
+                labels=labels,
+                band=band,
+            )
+        except ValueError as exc:
+            self._warn("Show Band", str(exc))
+
 
     def plot_spectra(self, items: list[WorkspaceItem]):
         if not items:

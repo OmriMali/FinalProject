@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -43,23 +43,31 @@ class ResultsTab(QWidget):
     """
 
     show_rgb_requested = Signal()
-    compare_selected_requested = Signal()
+    show_band_requested = Signal()
     plot_spectra_requested = Signal()
     plot_histogram_requested = Signal()
+
 
     def __init__(self):
         super().__init__()
 
         self.current_display_mode = None
+
         self.current_spectra_hsis: list[HSI] | None = None
         self.current_spectra_labels: list[str] | None = None
 
+        self.current_band_hsis: list[HSI] | None = None
+        self.current_band_labels: list[str] | None = None
+
         self.spectra_update_timer = QTimer(self)
         self.spectra_update_timer.setSingleShot(True)
-        self.spectra_update_timer.setInterval(200)
-        self.spectra_update_timer.timeout.connect(
-            self._refresh_current_spectra_plot
-        )
+        self.spectra_update_timer.setInterval(100)
+        self.spectra_update_timer.timeout.connect( self._refresh_current_spectra_plot)
+
+        self.band_update_timer = QTimer(self)
+        self.band_update_timer.setSingleShot(True)
+        self.band_update_timer.setInterval(100)
+        self.band_update_timer.timeout.connect(self._refresh_current_band_plot)
 
         self._build_ui()
 
@@ -77,41 +85,38 @@ class ResultsTab(QWidget):
         layout = QHBoxLayout(box)
 
         self.show_rgb_button = QPushButton("Show RGB")
-        self.compare_selected_button = QPushButton("Compare Selected")
-        self.compare_last_result_button = QPushButton("Compare Last Result")
+        self.show_band_button = QPushButton("Show Band")
         self.plot_spectra_button = QPushButton("Plot Spectra")
         self.plot_histogram_button = QPushButton("Histogram")
         self.clear_canvas_button = QPushButton("Clear Canvas")
 
+        self.band_spin = QSpinBox()
+        self.band_spin.setRange(0, 10000)
+        self.band_spin.setValue(0)
+
         self.spectrum_x_spin = QSpinBox()
         self.spectrum_x_spin.setRange(0, 10000)
         self.spectrum_x_spin.setValue(100)
-        self.spectrum_x_spin.valueChanged.connect(
-            self._schedule_spectra_update
-        )
 
         self.spectrum_y_spin = QSpinBox()
         self.spectrum_y_spin.setRange(0, 10000)
         self.spectrum_y_spin.setValue(100)
-        self.spectrum_y_spin.valueChanged.connect(
-            self._schedule_spectra_update
-        )
 
         self.show_rgb_button.clicked.connect(self.show_rgb_requested.emit)
-        self.compare_selected_button.clicked.connect(
-            self.compare_selected_requested.emit
-        )
-        self.plot_spectra_button.clicked.connect(
-            self.plot_spectra_requested.emit
-        )
-        self.plot_histogram_button.clicked.connect(
-            self.plot_histogram_requested.emit
-        )
+        self.show_band_button.clicked.connect(self.show_band_requested.emit)
+        self.plot_spectra_button.clicked.connect(self.plot_spectra_requested.emit)
+        self.plot_histogram_button.clicked.connect(self.plot_histogram_requested.emit)
         self.clear_canvas_button.clicked.connect(self.clear_canvas)
 
+        self.band_spin.valueChanged.connect(self._schedule_band_update)
+        self.spectrum_x_spin.valueChanged.connect(self._schedule_spectra_update)
+        self.spectrum_y_spin.valueChanged.connect(self._schedule_spectra_update)
+
         layout.addWidget(self.show_rgb_button)
-        layout.addWidget(self.compare_selected_button)
-        layout.addWidget(self.compare_last_result_button)
+    
+        layout.addWidget(QLabel("Band"))
+        layout.addWidget(self.band_spin)
+        layout.addWidget(self.show_band_button)
 
         layout.addWidget(QLabel("x"))
         layout.addWidget(self.spectrum_x_spin)
@@ -146,6 +151,8 @@ class ResultsTab(QWidget):
         self.display_figure = Figure(figsize=(6, 5))
         self.display_canvas = FigureCanvas(self.display_figure)
 
+        self.display_canvas.mpl_connect("button_press_event", self._on_canvas_clicked)
+
         self.display_toolbar = NavigationToolbar(
             self.display_canvas,
             self,
@@ -155,18 +162,17 @@ class ResultsTab(QWidget):
         layout.addWidget(self.display_canvas, stretch=1)
 
         return box
+    
 
     def set_action_availability(
         self,
         can_show_rgb: bool = False,
-        can_compare_selected: bool = False,
-        can_compare_last_result: bool = False,
+        can_show_band: bool = False,
         can_plot_spectra: bool = False,
         can_plot_histogram: bool = False,
     ):
         self.show_rgb_button.setEnabled(can_show_rgb)
-        self.compare_selected_button.setEnabled(can_compare_selected)
-        self.compare_last_result_button.setEnabled(can_compare_last_result)
+        self.show_band_button.setEnabled(can_show_band)
         self.plot_spectra_button.setEnabled(can_plot_spectra)
         self.plot_histogram_button.setEnabled(can_plot_histogram)
 
@@ -180,9 +186,13 @@ class ResultsTab(QWidget):
         self.current_display_mode = "rgb"
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
+        self.current_band_hsis = None
+        self.current_band_labels = None
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
+
+        self._set_spectrum_pixel_limits(hsi)
 
         plot_rgb(
             hsi=hsi,
@@ -203,8 +213,12 @@ class ResultsTab(QWidget):
         self.current_display_mode = "rgb"
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
+        self.current_band_hsis = None
+        self.current_band_labels = None
 
         self.display_figure.clear()
+
+        self._set_spectrum_pixel_limits(hsis[0])
 
         n_images = len(hsis)
         n_cols = min(3, n_images)
@@ -242,6 +256,8 @@ class ResultsTab(QWidget):
         self.current_display_mode = "spectra"
         self.current_spectra_hsis = hsis
         self.current_spectra_labels = labels
+        self.current_band_hsis = None
+        self.current_band_labels = None
 
         self._set_spectrum_pixel_limits(hsis[0])
 
@@ -260,6 +276,9 @@ class ResultsTab(QWidget):
         self.current_display_mode = "histogram"
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
+        self.current_band_hsis = None
+        self.current_band_labels = None
+
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
@@ -285,6 +304,8 @@ class ResultsTab(QWidget):
         self.current_display_mode = "compressed_histogram"
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
+        self.current_band_hsis = None
+        self.current_band_labels = None
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
@@ -316,6 +337,8 @@ class ResultsTab(QWidget):
         self.current_display_mode = None
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
+        self.current_band_hsis = None
+        self.current_band_labels = None
 
         self.display_figure.clear()
         self.display_canvas.draw_idle()
@@ -383,3 +406,179 @@ class ResultsTab(QWidget):
             )
         except ValueError:
             pass
+
+    def current_band(self) -> int:
+        return self.band_spin.value()
+
+    def set_band_limits(self, hsi: HSI):
+        n_bands = hsi.bands
+
+        self.band_spin.blockSignals(True)
+        self.band_spin.setRange(0, n_bands - 1)
+        self.band_spin.blockSignals(False)
+
+    def display_band(
+        self,
+        hsi: HSI,
+        band: int,
+        label: str | None = None,
+        title: str | None = None,
+    ):
+        self.current_display_mode = "band"
+        self.current_spectra_hsis = None
+        self.current_spectra_labels = None
+        self.current_band_hsis = [hsi]
+        self.current_band_labels = [label or title or "HSI"]
+
+        if title is None:
+            if label is not None:
+                title = f"{label}_Band_{band}"
+            else:
+                title = f"Band {band}"
+
+        if band < 0 or band >= hsi.data.shape[2]:
+            raise ValueError(
+                f"Band index {band} is outside valid range 0-{hsi.data.shape[2] - 1}"
+            )
+
+        self._set_spectrum_pixel_limits(hsi)
+        self.set_band_limits(hsi)
+
+        self.display_figure.clear()
+        ax = self.display_figure.add_subplot(1, 1, 1)
+
+        image = hsi.data[:, :, band]
+        
+        ax.imshow(image, cmap="gray")
+        ax.set_axis_off()
+
+        if title is None:
+            title = f"Band {band}"
+
+        ax.set_title(title)
+
+        self.display_figure.tight_layout()
+        self.display_canvas.draw_idle()
+
+    def display_band_comparison(
+        self,
+        hsis: list[HSI],
+        labels: list[str],
+        band: int,
+    ):
+        self.current_display_mode = "band"
+        self.current_band_hsis = hsis
+        self.current_band_labels = labels
+        self.current_spectra_hsis = None
+        self.current_spectra_labels = None
+
+        if band < 0 or band >= hsis[0].data.shape[2]:
+            raise ValueError(
+                f"Band index {band} is outside valid range 0-{hsis[0].data.shape[2] - 1}"
+            )
+
+        self._set_spectrum_pixel_limits(hsis[0])
+        self.set_band_limits(hsis[0])
+
+        self.display_figure.clear()
+
+        n_images = len(hsis)
+        n_cols = min(3, n_images)
+        n_rows = math.ceil(n_images / n_cols)
+
+        axes = self.display_figure.subplots(
+            n_rows,
+            n_cols,
+            squeeze=False,
+        ).ravel()
+
+        for ax, hsi, label in zip(axes, hsis, labels):
+            if band >= hsi.data.shape[2]:
+                ax.set_title(f"{label}\nBand unavailable")
+                ax.set_axis_off()
+                continue
+
+            ax.imshow(hsi.data[:, :, band], cmap="gray")
+            ax.set_title(f"{label}\nBand {band}")
+            ax.set_axis_off()
+
+        for ax in axes[n_images:]:
+            ax.set_axis_off()
+
+        self.display_figure.tight_layout()
+        self.display_canvas.draw_idle()
+
+    def _on_canvas_clicked(self, event):
+
+        if self.current_display_mode not in {"rgb", "band"}:
+            return
+        if event.inaxes is None:
+            return
+
+        if event.xdata is None or event.ydata is None:
+            return
+
+        x = int(round(event.xdata))
+        y = int(round(event.ydata))
+
+        if x < self.spectrum_x_spin.minimum() or x > self.spectrum_x_spin.maximum():
+            return
+
+        if y < self.spectrum_y_spin.minimum() or y > self.spectrum_y_spin.maximum():
+            return
+
+        self.spectrum_x_spin.setValue(x)
+        self.spectrum_y_spin.setValue(y)
+
+    def set_band_limits_for_hsis(self, hsis: list[HSI]):
+        if not hsis:
+            return
+
+        n_bands = min(hsi.data.shape[2] for hsi in hsis)
+
+        self.band_spin.blockSignals(True)
+        self.band_spin.setRange(0, n_bands - 1)
+
+        if self.band_spin.value() > n_bands - 1:
+            self.band_spin.setValue(n_bands - 1)
+
+        self.band_spin.blockSignals(False)
+
+    def _schedule_band_update(self):
+        if self.current_display_mode != "band":
+            return
+
+        if self.current_band_hsis is None:
+            return
+
+        self.band_update_timer.start()
+
+    def _refresh_current_band_plot(self):
+        if self.current_display_mode != "band":
+            return
+
+        if self.current_band_hsis is None:
+            return
+
+        if self.current_band_labels is None:
+            return
+
+        band = self.current_band()
+
+        try:
+            if len(self.current_band_hsis) == 1:
+                self.display_band(
+                    hsi=self.current_band_hsis[0],
+                    band=band,
+                    label=self.current_band_labels[0],
+                )
+                return
+
+            self.display_band_comparison(
+                hsis=self.current_band_hsis,
+                labels=self.current_band_labels,
+                band=band,
+            )
+        except ValueError:
+            pass
+

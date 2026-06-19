@@ -120,48 +120,45 @@ class VisualizationController:
         self.results_tab.start_spectra_plot(hsis, labels)
 
     def plot_histogram(self, items: list[WorkspaceItem]):
-        item = self._single_item(
-            items,
-            title="Histogram",
-            message="Please check exactly one item.",
-        )
-
-        if item is None:
+        if not items:
+            self._warn("Histogram", "Please check at least one item.")
             return
 
-        obj = self._load_object(item)
-        if obj is None:
-            return
+        objs = []
+        labels = []
+        compressors = []
 
-        if isinstance(obj, HSI):
-            self.results_tab.display_hsi_histogram(
-                hsi=obj,
-                title=f"{item.plot_label}_Histogram",
-            )
-            return
+        for item in items:
+            obj = self._load_object(item)
+            if obj is None:
+                return  # Abort if any file fails to load
 
-        if isinstance(obj, CompressedHSI):
-            try:
-                compressor = self._compressor_from_compressed_hsi(obj)
-            except Exception as exc:
+            if isinstance(obj, HSI):
+                objs.append(obj)
+                labels.append(item.plot_label)
+                compressors.append(None)
+                
+            elif isinstance(obj, CompressedHSI):
+                try:
+                    compressor = self._compressor_from_compressed_hsi(obj)
+                    objs.append(obj)
+                    labels.append(item.plot_label)
+                    compressors.append(compressor)
+                except Exception as exc:
+                    self._warn(
+                        "Histogram",
+                        f"Could not prepare compressed histogram decoder for {item.plot_label}:\n{exc}",
+                    )
+                    return
+            else:
                 self._warn(
                     "Histogram",
-                    f"Could not prepare compressed histogram decoder:\n{exc}",
+                    f"Item '{item.plot_label}' is not an HSI or CompressedHSI.",
                 )
                 return
 
-            self.results_tab.display_compressed_histogram(
-                compressed=obj,
-                compressor=compressor,
-                title=f"{item.plot_label}_Compressed_Histogram",
-            )
-            return
-
-        self._warn(
-            "Histogram",
-            "Selected item is not an HSI or CompressedHSI.",
-        )
-
+        self.results_tab.display_histograms(objs, labels, compressors)
+        
     def _load_object(self, item: WorkspaceItem):
         try:
             return self.workspace_loader.load_object(item)

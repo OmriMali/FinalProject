@@ -303,7 +303,7 @@ class MainWindow(QMainWindow):
 
         exactly_one_hsi = n_checked == 1 and n_hsis == 1
         exactly_one_compressed = n_checked == 1 and n_compressed == 1
-        exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
+        can_plot_histogram = (n_hsis + n_compressed) > 0
 
     
         self.compression_tab.set_action_availability(
@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
             can_compare_selected=n_hsis >= 2 and n_compressed == 0,
             can_compare_last_result=False,
             can_plot_spectra=n_hsis >= 1 and n_compressed == 0,
-            can_plot_histogram=exactly_one_histogram_item,
+            can_plot_histogram=can_plot_histogram,
         )
 
 

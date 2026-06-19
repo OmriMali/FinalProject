@@ -153,9 +153,9 @@ class HCS1D(Compressor):
 
         return reconstruction
 
-
     def decode_compressed_values(self, compressed: CompressedHSI) -> np.ndarray:
-
-        return bitstream.unpack_from_bit_depth(compressed.bitstream,
-                                                compressed.metadata.bit_depth,
-                                                compressed.side_information["y_shape"])
+        return bitstream.unpack_from_bit_depth(
+            compressed.bitstream,
+            compressed.metadata.bit_depth,
+            compressed.side_information["y_shape"]
+        )

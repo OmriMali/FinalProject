@@ -252,62 +252,69 @@ class ResultsTab(QWidget):
 
         self._display_spectra(hsis, labels, pixel)
 
-    def display_hsi_histogram(
+    def display_histograms(
         self,
-        hsi: HSI,
-        title: str | None = None,
+        objs: list,
+        labels: list[str],
+        compressors: list
     ):
         self.current_display_mode = "histogram"
         self.current_spectra_hsis = None
         self.current_spectra_labels = None
 
         self.display_figure.clear()
-        ax = self.display_figure.add_subplot(1, 1, 1)
 
-        plot_histogram(
-            hsi=hsi,
-            band=None,
-            bins=256,
-            style=DEFAULT_STYLE,
-            ax=ax,
-            title=title,
-        )
+        n_items = len(objs)
+        n_cols = min(3, n_items)
+        n_rows = math.ceil(n_items / n_cols)
 
-        self.display_figure.tight_layout()
-        self.display_canvas.draw_idle()
+        # Create subplots completely unlinked at first
+        axes = self.display_figure.subplots(
+            n_rows,
+            n_cols,
+            squeeze=False,
+        ).ravel()
 
-    def display_compressed_histogram(
-        self,
-        compressed: CompressedHSI,
-        compressor: Compressor,
-        title: str | None = None,
-    ):
-        self.current_display_mode = "compressed_histogram"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
+        first_hsi_ax = None  # We will use this to sync all subsequent HSI plots
 
-        self.display_figure.clear()
-        ax = self.display_figure.add_subplot(1, 1, 1)
+        for i, (obj, label, compressor) in enumerate(zip(objs, labels, compressors)):
+            ax = axes[i]
+            
+            if isinstance(obj, HSI):
+                # If this is our first HSI, save its axis. 
+                # If it's a subsequent HSI, link it to the first one!
+                if first_hsi_ax is None:
+                    first_hsi_ax = ax
+                else:
+                    ax.sharex(first_hsi_ax)
+                    ax.sharey(first_hsi_ax)
 
-        try:
-            plot_compressed_histogram(
-                compressed=compressed,
-                compressor=compressor,
-                bins=256,
-                style=DEFAULT_STYLE,
-                ax=ax,
-                title=title,
-            )
-        except NotImplementedError as exc:
-            QMessageBox.warning(self, "Histogram", str(exc))
-            return
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Histogram",
-                f"Could not decode compressed values:\n{exc}",
-            )
-            return
+                plot_histogram(
+                    hsi=obj,
+                    band=None,
+                    bins=256,
+                    style=DEFAULT_STYLE,
+                    ax=ax,
+                    title=label,
+                )
+            else:
+                # Compressed items ignore the linking and scale independently
+                try:
+                    plot_compressed_histogram(
+                        compressed=obj,
+                        compressor=compressor,
+                        bins=256,
+                        style=DEFAULT_STYLE,
+                        ax=ax,
+                        title=label,
+                    )
+                except Exception as exc:
+                    print(f"Error plotting {label}: {exc}")
+                    continue
+
+        # Hide any unused subplots
+        for ax in axes[n_items:]:
+            ax.set_axis_off()
 
         self.display_figure.tight_layout()
         self.display_canvas.draw_idle()

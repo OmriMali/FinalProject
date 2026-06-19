@@ -202,7 +202,6 @@ class VisualizationController:
                 "Histogram",
                 f"Could not plot histograms:\n{exc}",
             )
-
     def _load_object(self, item: WorkspaceItem):
         try:
             return self.workspace_loader.load_object(item)

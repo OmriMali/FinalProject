@@ -19,9 +19,10 @@ def main():
     sections_dir = r"data\sections"
     
     # ===== Scenes =====
-    scenes = ["JasperRidge",
-              #"MoffetField", 
-              # "Cuprite",
+    scenes = [
+                # "JasperRidge",
+                "MoffetField", 
+                # "Cuprite",
               ]
 
     # ===== Preprocess =====

@@ -61,8 +61,16 @@ class CompressionService:
             ber=experiment_settings["ber"],
         )
 
-        artifact_dir = artifact_callback.last_artifact_dir
-        artifact_paths = artifact_callback.last_artifact_paths
+        artifact_dir = (
+            artifact_callback.last_artifact_dir
+            if artifact_callback is not None
+            else None
+        )
+        artifact_paths = (
+            artifact_callback.last_artifact_paths
+            if artifact_callback is not None
+            else {}
+        )
 
         return CompressionGuiResult(
             source_item=source_item,
@@ -113,25 +121,33 @@ class CompressionService:
         message_callback: Callable[[str], None] | None = None,
     ):
         results_dir = experiment_settings["results_dir"]
+        save_result = experiment_settings.get("save_result", True)
 
-        artifact_callback = ArtifactLoggerCallback(
-            results_dir=results_dir,
-            save_reconstructed=experiment_settings["save_reconstructed"],
-            save_compressed=experiment_settings["save_compressed"],
-            save_dictionary=False,
-            save_coefficients=False,
-            save_config=experiment_settings["save_config"],
-            save_metadata=experiment_settings["save_metadata"],
+        artifact_callback = None
+        callbacks = []
+
+        if save_result:
+            artifact_callback = ArtifactLoggerCallback(
+                results_dir=results_dir,
+                save_reconstructed=True,
+                save_compressed=True,
+                save_dictionary=False,
+                save_coefficients=False,
+                save_config=True,
+                save_metadata=True,
+            )
+
+            callbacks.extend(
+                [
+                    artifact_callback,
+                ]
+            )
+
+        callbacks.append(
+            CSVLoggerCallback(
+                results_dir=results_dir,
+            )
         )
-
-        csv_callback = CSVLoggerCallback(
-            results_dir=results_dir,
-        )
-
-        callbacks = [
-            artifact_callback,
-            csv_callback,
-        ]
 
         if progress_callback is not None or message_callback is not None:
             callbacks.append(

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from src.ui.gui.models import WorkspaceItem
+from src.ui.gui.models import WorkspaceItem, CompressionRunSpec
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
 from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
@@ -32,6 +32,9 @@ class MainWindow(QMainWindow):
         self.workspace_loader = WorkspaceLoader()
 
         self.is_running = False
+        self.run_queue: list[CompressionRunSpec] = []
+        self.current_run_number = 0
+        self.total_run_count = 0
 
         self.compression_controller = CompressionController(self)
 
@@ -110,23 +113,61 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            config_values = self.compression_tab.read_compressor_config_values()
-            experiment_settings = self.compression_tab.read_experiment_settings()
+            run_specs = self._build_run_specs(item)
         except ValueError as exc:
             show_warning(self, "Invalid settings", str(exc))
             return
 
-        self._start_compression(
-            source_item=item,
-            compressor_name=self.compression_tab.current_compressor_name(),
-            config_values=config_values,
-            experiment_settings=experiment_settings,
-        )
+        self._start_run_specs(run_specs)
 
-    def _set_run_progress(self, value: float):
+    def _build_run_specs(
+        self,
+        source_item: WorkspaceItem,
+    ) -> list[CompressionRunSpec]:
+        if source_item.path is None:
+            raise ValueError(
+                "This item has no file path. Save or reload it from disk first."
+            )
+
+        experiment_settings = self.compression_tab.read_experiment_settings()
+        config_variants = self.compression_tab.read_config_variants()
+        compressor_name = self.compression_tab.current_compressor_name()
+        base_experiment = experiment_settings["experiment"]
+
+        run_specs = []
+
+        for label, config_values in config_variants:
+            run_settings = dict(experiment_settings)
+
+            if label:
+                run_settings["experiment"] = f"{base_experiment}__{label}"
+
+            run_specs.append(
+                CompressionRunSpec(
+                    source_path=source_item.path,
+                    compressor_name=compressor_name,
+                    config_values=config_values,
+                    experiment_settings=run_settings,
+                    label=label,
+                )
+            )
+
+        return run_specs
+
+    def _on_compression_progress(self, value: float):
+        if self.total_run_count > 1:
+            completed = max(0, self.current_run_number - 1)
+            value = (completed + value) / self.total_run_count
+
         self.compression_tab.set_progress(value)
 
-    def _set_run_progress_message(self, message: str):
+    def _on_compression_message(self, message: str):
+        if self.total_run_count > 1:
+            message = (
+                f"Run {self.current_run_number}/{self.total_run_count}: "
+                f"{message}"
+            )
+
         self.compression_tab.set_message(message)
 
     def _set_running(self, running: bool):
@@ -236,15 +277,15 @@ class MainWindow(QMainWindow):
 
     def _connect_compression_controller(self):
         self.compression_controller.started.connect(
-            lambda: self._set_running(True)
+            self._on_compression_started
         )
 
         self.compression_controller.progress_changed.connect(
-            self._set_run_progress
+            self._on_compression_progress
         )
 
         self.compression_controller.message_changed.connect(
-            self._set_run_progress_message
+            self._on_compression_message
         )
 
         self.compression_controller.failed.connect(
@@ -259,7 +300,13 @@ class MainWindow(QMainWindow):
             self._on_compression_finished
         )
 
+    def _on_compression_started(self):
+        if not self.is_running:
+            self._set_running(True)
+
     def _on_compression_failed(self, message: str):
+        self.run_queue.clear()
+
         show_error(
             self,
             "Compression failed",
@@ -267,14 +314,18 @@ class MainWindow(QMainWindow):
         )
 
     def _on_compression_finished(self, status: str):
+        if status == "finished" and self.run_queue:
+            self._start_next_run_spec()
+            return
+
+        self.run_queue.clear()
+        self.current_run_number = 0
+        self.total_run_count = 0
         self._set_running(False)
 
-    def _start_compression(
+    def _start_run_specs(
         self,
-        source_item: WorkspaceItem,
-        compressor_name: str,
-        config_values: dict,
-        experiment_settings: dict,
+        run_specs: list[CompressionRunSpec],
     ):
         if self.compression_controller.is_running:
             show_warning(
@@ -284,22 +335,30 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if source_item.path is None:
-            show_warning(
-                self,
-                "Cannot run compression",
-                "This item has no file path. Save or reload it from disk first.",
-            )
+        if not run_specs:
             return
 
+        self.run_queue = list(run_specs)
+        self.current_run_number = 0
+        self.total_run_count = len(run_specs)
+        self._start_next_run_spec()
+
+    def _start_next_run_spec(self):
+        if not self.run_queue:
+            return
+
+        spec = self.run_queue.pop(0)
+        self.current_run_number += 1
+
         self.compression_controller.start(
-            source_path=source_item.path,
-            compressor_name=compressor_name,
-            config_values=config_values,
-            experiment_settings=experiment_settings,
+            source_path=spec.source_path,
+            compressor_name=spec.compressor_name,
+            config_values=spec.config_values,
+            experiment_settings=spec.experiment_settings,
         )
 
     def _abort_compression(self):
+        self.run_queue.clear()
         self.compression_controller.abort()
 
     # ------------------------------------------------------------------
@@ -307,16 +366,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _update_action_buttons(self):
-
-        if self.is_running:
-            self.compression_tab.set_action_availability(
-                can_compress=False,
-                can_decompress=False,
-                can_compress_decompress=False,
-            )
-            self.results_tab.set_action_availability()
-            return
-
         selected_items = self.selected_workspace_items()
 
         selected_hsis = [
@@ -339,11 +388,8 @@ class MainWindow(QMainWindow):
         exactly_one_compressed = n_selected == 1 and n_compressed == 1
         exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
 
-    
         self.compression_tab.set_action_availability(
-            can_compress=False,
-            can_decompress=False,
-            can_compress_decompress=exactly_one_hsi,
+            can_compress_decompress=exactly_one_hsi and not self.is_running,
         )
 
         self.results_tab.set_action_availability(

@@ -261,16 +261,10 @@ def read_widget_value(widget: QWidget) -> Any:
     """
     Read a typed Python value from a config widget.
     """
-    if hasattr(widget, "value"):
-        return widget.value()
-
     if isinstance(widget, QCheckBox):
         return widget.isChecked()
 
-    if isinstance(widget, QSpinBox):
-        return widget.value()
-
-    if isinstance(widget, QDoubleSpinBox):
+    if isinstance(widget, (QSpinBox, QDoubleSpinBox, TupleWidget)):
         return widget.value()
 
     if isinstance(widget, QComboBox):
@@ -279,7 +273,7 @@ def read_widget_value(widget: QWidget) -> Any:
             return data
         return widget.currentText()
 
-    if isinstance(widget, TupleWidget):
+    if hasattr(widget, "value"):
         return widget.value()
 
     raise TypeError(f"Unsupported config widget: {type(widget)}")
@@ -290,16 +284,14 @@ def _create_basis_tuple_widget(
     options: list[str],
     allow_learned_path: bool,
 ) -> TupleWidget:
-    widgets = []
-
-    for value in default:
-        widgets.append(
-            BasisSelectionWidget(
-                options=options,
-                default=str(value),
-                allow_learned_path=allow_learned_path,
-            )
+    widgets = [
+        BasisSelectionWidget(
+            options=options,
+            default=str(value),
+            allow_learned_path=allow_learned_path,
         )
+        for value in default
+    ]
 
     return TupleWidget(widgets)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 from PySide6.QtCore import QObject, Signal
 
@@ -31,34 +32,50 @@ class ArtifactController(QObject):
     def handle_compression_finished(self, payload: dict):
         method = payload.get("compressor_name", "unknown")
         metrics = payload.get("metrics", {})
+        temporary_artifacts = bool(payload.get("temporary_artifacts", False))
+        temporary_artifact_dir = payload.get("temporary_artifact_dir")
 
         compressed_path = payload.get("compressed_path")
         reconstructed_path = payload.get("reconstructed_path")
 
-        if compressed_path:
-            self._load_compressed_output(
-                path=Path(compressed_path),
-                method=method,
-            )
+        try:
+            if compressed_path:
+                self._load_compressed_output(
+                    path=Path(compressed_path),
+                    method=method,
+                    keep_cached=temporary_artifacts,
+                    keep_path=not temporary_artifacts,
+                )
 
-        if reconstructed_path:
-            reconstructed_item = self._load_reconstructed_output(
-                path=Path(reconstructed_path),
-                method=method,
-                metrics=metrics,
-            )
+            if reconstructed_path:
+                reconstructed_item = self._load_reconstructed_output(
+                    path=Path(reconstructed_path),
+                    method=method,
+                    metrics=metrics,
+                    keep_cached=temporary_artifacts,
+                    keep_path=not temporary_artifacts,
+                )
 
-            if reconstructed_item is not None:
-                self.metrics_item_ready.emit(reconstructed_item)
+                if reconstructed_item is not None:
+                    self.metrics_item_ready.emit(reconstructed_item)
+        finally:
+            if temporary_artifacts and temporary_artifact_dir:
+                shutil.rmtree(temporary_artifact_dir, ignore_errors=True)
 
     def _load_reconstructed_output(
         self,
         path: Path,
         method: str,
         metrics: dict,
+        keep_cached: bool = False,
+        keep_path: bool = True,
     ) -> WorkspaceItem | None:
         try:
-            item = self.workspace_loader.inspect_hsi(path)
+            item = self.workspace_loader.inspect_hsi(
+                path,
+                keep_cached=keep_cached,
+                keep_path=keep_path,
+            )
         except WorkspaceLoadError as exc:
             self.warning.emit(
                 "Could not load reconstructed output",
@@ -78,9 +95,15 @@ class ArtifactController(QObject):
         self,
         path: Path,
         method: str,
+        keep_cached: bool = False,
+        keep_path: bool = True,
     ) -> WorkspaceItem | None:
         try:
-            item = self.workspace_loader.inspect_compressed_hsi(path)
+            item = self.workspace_loader.inspect_compressed_hsi(
+                path,
+                keep_cached=keep_cached,
+                keep_path=keep_path,
+            )
         except WorkspaceLoadError as exc:
             self.warning.emit(
                 "Could not load compressed output",

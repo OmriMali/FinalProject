@@ -13,8 +13,6 @@ class WorkspaceLoadError(RuntimeError):
     Raised when a workspace item cannot be loaded.
     """
 
-    pass
-
 
 class WorkspaceLoader:
     """
@@ -24,9 +22,14 @@ class WorkspaceLoader:
     """
 
     def __init__(self):
-        self.metrics_extractor = MetricsExtractor() 
+        self.metrics_extractor = MetricsExtractor()
 
-    def inspect_hsi(self, path: Path) -> WorkspaceItem:
+    def inspect_hsi(
+        self,
+        path: Path,
+        keep_cached: bool = False,
+        keep_path: bool = True,
+    ) -> WorkspaceItem:
         hsi = self._load_hsi_from_path(path)
 
         metrics = self.metrics_extractor.extract_for_hsi(
@@ -43,12 +46,17 @@ class WorkspaceLoader:
         return WorkspaceItem.from_hsi(
             hsi=hsi,
             type=item_type,
-            path=path,
+            path=path if keep_path else None,
             metrics=metrics,
-            keep_cached=False,
+            keep_cached=keep_cached,
         )
 
-    def inspect_compressed_hsi(self, path: Path) -> WorkspaceItem:
+    def inspect_compressed_hsi(
+        self,
+        path: Path,
+        keep_cached: bool = False,
+        keep_path: bool = True,
+    ) -> WorkspaceItem:
         """
         Inspect a CompressedHSI file and return a lightweight workspace item.
         """
@@ -56,8 +64,8 @@ class WorkspaceLoader:
 
         return WorkspaceItem.from_compressed_hsi(
             compressed=compressed,
-            path=path,
-            keep_cached=False,
+            path=path if keep_path else None,
+            keep_cached=keep_cached,
         )
 
     def load_object(self, item: WorkspaceItem) -> HSI | CompressedHSI:

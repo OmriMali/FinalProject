@@ -15,11 +15,3 @@ def show_error(
     message: str,
 ):
     QMessageBox.critical(parent, title, message)
-
-
-def show_info(
-    parent: QWidget | None,
-    title: str,
-    message: str,
-):
-    QMessageBox.information(parent, title, message)

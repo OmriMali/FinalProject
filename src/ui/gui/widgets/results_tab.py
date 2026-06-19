@@ -47,22 +47,17 @@ class ResultsTab(QWidget):
     plot_spectra_requested = Signal()
     plot_histogram_requested = Signal()
 
-
     def __init__(self):
         super().__init__()
 
-        self.current_display_mode = None
-
-        self.current_spectra_hsis: list[HSI] | None = None
-        self.current_spectra_labels: list[str] | None = None
-
-        self.current_band_hsis: list[HSI] | None = None
-        self.current_band_labels: list[str] | None = None
+        self._set_display_state(None)
 
         self.spectra_update_timer = QTimer(self)
         self.spectra_update_timer.setSingleShot(True)
         self.spectra_update_timer.setInterval(100)
-        self.spectra_update_timer.timeout.connect( self._refresh_current_spectra_plot)
+        self.spectra_update_timer.timeout.connect(
+            self._refresh_current_spectra_plot
+        )
 
         self.band_update_timer = QTimer(self)
         self.band_update_timer.setSingleShot(True)
@@ -113,7 +108,7 @@ class ResultsTab(QWidget):
         self.spectrum_y_spin.valueChanged.connect(self._schedule_spectra_update)
 
         layout.addWidget(self.show_rgb_button)
-    
+
         layout.addWidget(QLabel("Band"))
         layout.addWidget(self.band_spin)
         layout.addWidget(self.show_band_button)
@@ -151,7 +146,10 @@ class ResultsTab(QWidget):
         self.display_figure = Figure(figsize=(6, 5))
         self.display_canvas = FigureCanvas(self.display_figure)
 
-        self.display_canvas.mpl_connect("button_press_event", self._on_canvas_clicked)
+        self.display_canvas.mpl_connect(
+            "button_press_event",
+            self._on_canvas_clicked,
+        )
 
         self.display_toolbar = NavigationToolbar(
             self.display_canvas,
@@ -162,7 +160,6 @@ class ResultsTab(QWidget):
         layout.addWidget(self.display_canvas, stretch=1)
 
         return box
-    
 
     def set_action_availability(
         self,
@@ -183,11 +180,7 @@ class ResultsTab(QWidget):
         self.metrics_table.show_metrics_comparison(items)
 
     def display_rgb(self, hsi: HSI, title: str | None = None):
-        self.current_display_mode = "rgb"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = None
-        self.current_band_labels = None
+        self._set_display_state("rgb")
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
@@ -210,11 +203,7 @@ class ResultsTab(QWidget):
         hsis: list[HSI],
         labels: list[str],
     ):
-        self.current_display_mode = "rgb"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = None
-        self.current_band_labels = None
+        self._set_display_state("rgb")
 
         self.display_figure.clear()
 
@@ -253,11 +242,11 @@ class ResultsTab(QWidget):
         hsis: list[HSI],
         labels: list[str],
     ):
-        self.current_display_mode = "spectra"
-        self.current_spectra_hsis = hsis
-        self.current_spectra_labels = labels
-        self.current_band_hsis = None
-        self.current_band_labels = None
+        self._set_display_state(
+            "spectra",
+            spectra_hsis=hsis,
+            spectra_labels=labels,
+        )
 
         self._set_spectrum_pixel_limits(hsis[0])
 
@@ -273,12 +262,7 @@ class ResultsTab(QWidget):
         hsi: HSI,
         title: str | None = None,
     ):
-        self.current_display_mode = "histogram"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = None
-        self.current_band_labels = None
-
+        self._set_display_state("histogram")
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
@@ -301,11 +285,7 @@ class ResultsTab(QWidget):
         compressor: Compressor,
         title: str | None = None,
     ):
-        self.current_display_mode = "compressed_histogram"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = None
-        self.current_band_labels = None
+        self._set_display_state("compressed_histogram")
 
         self.display_figure.clear()
         ax = self.display_figure.add_subplot(1, 1, 1)
@@ -334,14 +314,24 @@ class ResultsTab(QWidget):
         self.display_canvas.draw_idle()
 
     def clear_canvas(self):
-        self.current_display_mode = None
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = None
-        self.current_band_labels = None
+        self._set_display_state(None)
 
         self.display_figure.clear()
         self.display_canvas.draw_idle()
+
+    def _set_display_state(
+        self,
+        mode: str | None,
+        spectra_hsis: list[HSI] | None = None,
+        spectra_labels: list[str] | None = None,
+        band_hsis: list[HSI] | None = None,
+        band_labels: list[str] | None = None,
+    ) -> None:
+        self.current_display_mode = mode
+        self.current_spectra_hsis = spectra_hsis
+        self.current_spectra_labels = spectra_labels
+        self.current_band_hsis = band_hsis
+        self.current_band_labels = band_labels
 
     def _display_spectra(
         self,
@@ -393,6 +383,9 @@ class ResultsTab(QWidget):
         if self.current_spectra_hsis is None:
             return
 
+        if self.current_spectra_labels is None:
+            return
+
         pixel = (
             self.spectrum_x_spin.value(),
             self.spectrum_y_spin.value(),
@@ -424,11 +417,11 @@ class ResultsTab(QWidget):
         label: str | None = None,
         title: str | None = None,
     ):
-        self.current_display_mode = "band"
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
-        self.current_band_hsis = [hsi]
-        self.current_band_labels = [label or title or "HSI"]
+        self._set_display_state(
+            "band",
+            band_hsis=[hsi],
+            band_labels=[label or title or "HSI"],
+        )
 
         if title is None:
             if label is not None:
@@ -448,12 +441,9 @@ class ResultsTab(QWidget):
         ax = self.display_figure.add_subplot(1, 1, 1)
 
         image = hsi.data[:, :, band]
-        
+
         ax.imshow(image, cmap="gray")
         ax.set_axis_off()
-
-        if title is None:
-            title = f"Band {band}"
 
         ax.set_title(title)
 
@@ -466,11 +456,11 @@ class ResultsTab(QWidget):
         labels: list[str],
         band: int,
     ):
-        self.current_display_mode = "band"
-        self.current_band_hsis = hsis
-        self.current_band_labels = labels
-        self.current_spectra_hsis = None
-        self.current_spectra_labels = None
+        self._set_display_state(
+            "band",
+            band_hsis=hsis,
+            band_labels=labels,
+        )
 
         if band < 0 or band >= hsis[0].data.shape[2]:
             raise ValueError(
@@ -509,7 +499,6 @@ class ResultsTab(QWidget):
         self.display_canvas.draw_idle()
 
     def _on_canvas_clicked(self, event):
-
         if self.current_display_mode not in {"rgb", "band"}:
             return
         if event.inaxes is None:

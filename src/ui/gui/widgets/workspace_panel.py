@@ -43,36 +43,31 @@ class WorkspacePanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        layout.addWidget(self._build_file_controls_panel())
-        layout.addWidget(self._build_loaded_items_panel(), stretch=1)
+        layout.addWidget(self._build_workspace_panel(), stretch=1)
 
-    def _build_file_controls_panel(self) -> QGroupBox:
-        box = QGroupBox("File Controls")
-        layout = QHBoxLayout(box)
+    def _build_workspace_panel(self) -> QGroupBox:
+        box = QGroupBox("Workspace")
+        layout = QVBoxLayout(box)
+
+        toolbar = QHBoxLayout()
 
         self.load_button = QPushButton("Load")
         self.remove_selected_button = QPushButton("Remove Selected")
         self.clear_items_button = QPushButton("Clear")
 
-        self.load_button.clicked.connect(self.load_requested.emit)
-
-        self.remove_selected_button.clicked.connect(self.remove_checked_items)
-        self.clear_items_button.clicked.connect(self.clear_workspace_items)
-
-        layout.addWidget(self.load_button)
-        layout.addWidget(self.remove_selected_button)
-        layout.addWidget(self.clear_items_button)
-        layout.addStretch()
-
-        return box
-
-    def _build_loaded_items_panel(self) -> QGroupBox:
-        box = QGroupBox("Loaded Items")
-        layout = QVBoxLayout(box)
-
         self.select_all_check = QCheckBox("Select all")
         self.select_all_check.setTristate(True)
         self.select_all_check.stateChanged.connect(self._on_select_all_changed)
+
+        self.load_button.clicked.connect(self.load_requested.emit)
+        self.remove_selected_button.clicked.connect(self.remove_checked_items)
+        self.clear_items_button.clicked.connect(self.clear_workspace_items)
+
+        toolbar.addWidget(self.load_button)
+        toolbar.addWidget(self.remove_selected_button)
+        toolbar.addWidget(self.clear_items_button)
+        toolbar.addStretch()
+        toolbar.addWidget(self.select_all_check)
 
         headers = [""] + WorkspaceItem.table_headers()
 
@@ -93,7 +88,7 @@ class WorkspacePanel(QWidget):
             self._on_loaded_item_changed
         )
 
-        layout.addWidget(self.select_all_check)
+        layout.addLayout(toolbar)
         layout.addWidget(self.loaded_items_table)
 
         return box
@@ -118,33 +113,20 @@ class WorkspacePanel(QWidget):
         self.workspace_changed.emit()
         self.selection_changed.emit()
         self._sync_select_all_checkbox()
-        self.loaded_items_table.resizeColumnsToContents()
-        self.loaded_items_table.horizontalHeader().setStretchLastSection(True)
+        self._refresh_loaded_items_table_layout()
 
     def remove_checked_items(self):
-        rows_to_remove = []
+        checked_rows_and_ids = self._checked_rows_and_ids()
 
-        for row in range(self.loaded_items_table.rowCount()):
-            check_item = self.loaded_items_table.item(row, 0)
-
-            if check_item is None:
-                continue
-
-            if check_item.checkState() == Qt.CheckState.Checked:
-                rows_to_remove.append(row)
-
-        if not rows_to_remove:
+        if not checked_rows_and_ids:
             return
 
-        item_ids_to_remove = set()
+        item_ids_to_remove = {
+            item_id
+            for _, item_id in checked_rows_and_ids
+        }
 
-        for row in rows_to_remove:
-            item_id = self.loaded_items_table.item(row, 0).data(
-                Qt.ItemDataRole.UserRole
-            )
-            item_ids_to_remove.add(item_id)
-
-        for row in sorted(rows_to_remove, reverse=True):
+        for row, _ in sorted(checked_rows_and_ids, reverse=True):
             self.loaded_items_table.removeRow(row)
 
         self.workspace_items = [
@@ -156,22 +138,13 @@ class WorkspacePanel(QWidget):
         self.workspace_changed.emit()
         self.selection_changed.emit()
         self._sync_select_all_checkbox()
-        self.loaded_items_table.resizeColumnsToContents()
-        self.loaded_items_table.horizontalHeader().setStretchLastSection(True)
-
+        self._refresh_loaded_items_table_layout()
 
     def selected_workspace_items(self) -> list[WorkspaceItem]:
-        checked_ids = set()
-
-        for row in range(self.loaded_items_table.rowCount()):
-            check_item = self.loaded_items_table.item(row, 0)
-
-            if check_item is None:
-                continue
-
-            if check_item.checkState() == Qt.CheckState.Checked:
-                item_id = check_item.data(Qt.ItemDataRole.UserRole)
-                checked_ids.add(item_id)
+        checked_ids = {
+            item_id
+            for _, item_id in self._checked_rows_and_ids()
+        }
 
         return [
             item
@@ -191,6 +164,7 @@ class WorkspacePanel(QWidget):
         self.load_button.setEnabled(enabled)
         self.remove_selected_button.setEnabled(enabled)
         self.clear_items_button.setEnabled(enabled)
+        self.select_all_check.setEnabled(enabled)
 
     def _append_workspace_item_row(self, item: WorkspaceItem):
         self.loaded_items_table.blockSignals(True)
@@ -217,8 +191,7 @@ class WorkspacePanel(QWidget):
             self.loaded_items_table.setItem(row, col, table_item)
 
         self.loaded_items_table.blockSignals(False)
-        self.loaded_items_table.resizeColumnsToContents()
-        self.loaded_items_table.horizontalHeader().setStretchLastSection(True)
+        self._refresh_loaded_items_table_layout()
 
     def _on_loaded_item_changed(self, item: QTableWidgetItem):
         if item.column() != 0:
@@ -235,8 +208,8 @@ class WorkspacePanel(QWidget):
             item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             table.setHorizontalHeaderItem(col, item)
 
-    def _on_select_all_changed(self, state: int):
-        checked = state == Qt.CheckState.Checked.value
+    def _on_select_all_changed(self, _state: int):
+        check_all = not self._all_rows_checked()
 
         self.loaded_items_table.blockSignals(True)
 
@@ -248,21 +221,20 @@ class WorkspacePanel(QWidget):
 
             check_item.setCheckState(
                 Qt.CheckState.Checked
-                if checked
+                if check_all
                 else Qt.CheckState.Unchecked
             )
 
         self.loaded_items_table.blockSignals(False)
 
+        self._sync_select_all_checkbox()
         self.selection_changed.emit()
 
     def _sync_select_all_checkbox(self):
         total = self.loaded_items_table.rowCount()
 
         if total == 0:
-            self.select_all_check.blockSignals(True)
-            self.select_all_check.setCheckState(Qt.CheckState.Unchecked)
-            self.select_all_check.blockSignals(False)
+            self._set_select_all_check_state(Qt.CheckState.Unchecked)
             return
 
         checked = 0
@@ -276,15 +248,47 @@ class WorkspacePanel(QWidget):
             if check_item.checkState() == Qt.CheckState.Checked:
                 checked += 1
 
-        self.select_all_check.blockSignals(True)
-
         if checked == 0:
-            self.select_all_check.setCheckState(Qt.CheckState.Unchecked)
+            state = Qt.CheckState.Unchecked
         elif checked == total:
-            self.select_all_check.setCheckState(Qt.CheckState.Checked)
+            state = Qt.CheckState.Checked
         else:
-            self.select_all_check.setCheckState(Qt.CheckState.PartiallyChecked)
+            state = Qt.CheckState.PartiallyChecked
 
+        self._set_select_all_check_state(state)
+
+    def _checked_rows_and_ids(self) -> list[tuple[int, str]]:
+        checked_rows_and_ids = []
+
+        for row in range(self.loaded_items_table.rowCount()):
+            check_item = self.loaded_items_table.item(row, 0)
+
+            if check_item is None:
+                continue
+
+            if check_item.checkState() != Qt.CheckState.Checked:
+                continue
+
+            checked_rows_and_ids.append(
+                (row, check_item.data(Qt.ItemDataRole.UserRole))
+            )
+
+        return checked_rows_and_ids
+
+    def _all_rows_checked(self) -> bool:
+        total = self.loaded_items_table.rowCount()
+
+        if total == 0:
+            return False
+
+        return len(self._checked_rows_and_ids()) == total
+
+    def _set_select_all_check_state(self, state: Qt.CheckState) -> None:
+        self.select_all_check.blockSignals(True)
+        self.select_all_check.setCheckState(state)
         self.select_all_check.blockSignals(False)
 
+    def _refresh_loaded_items_table_layout(self) -> None:
+        self.loaded_items_table.resizeColumnsToContents()
+        self.loaded_items_table.horizontalHeader().setStretchLastSection(True)
 

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import traceback
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from src.core.hsi import HSI
+from src.core.hsi import HSI, CompressedHSI
 from src.core.dictionary import Axis
+from src.io import save_hsi, save_compressed_hsi
 from src.ui.gui.services.workspace_loader import WorkspaceLoader
 from src.ui.gui.services.compression_service import CompressionService
 
@@ -67,6 +70,63 @@ def _path_to_str(path: Path | None) -> str | None:
 
     return str(path)
 
+def _run_attributes(result) -> dict:
+    return {
+        "timestamp": result.run_metadata.timestamp,
+        "machine": result.run_metadata.machine,
+        "method": result.run_metadata.algorithm_name,
+        "experiment": result.run_metadata.experiment,
+        "tags": result.run_metadata.tags,
+        "artifact_dir": result.run_metadata.artifact_dir,
+        "algorithm_config": result.run_metadata.algorithm_config,
+    }
+
+def _with_run_info_hsi(hsi: HSI, result) -> HSI:
+    attributes = dict(hsi.metadata.attributes)
+    attributes["run"] = _run_attributes(result)
+
+    return HSI(
+        data=hsi.data,
+        metadata=replace(hsi.metadata, attributes=attributes),
+    )
+
+def _with_run_info_compressed(
+    compressed: CompressedHSI,
+    result,
+) -> CompressedHSI:
+    attributes = dict(compressed.metadata.attributes)
+    attributes["run"] = _run_attributes(result)
+
+    return replace(
+        compressed,
+        metadata=replace(compressed.metadata, attributes=attributes),
+    )
+
+def _ensure_workspace_artifacts(
+    result,
+    artifact_paths: dict,
+) -> tuple[dict, str | None, bool]:
+    if artifact_paths.get("reconstructed") and artifact_paths.get("compressed"):
+        return artifact_paths, None, False
+
+    temporary_artifact_dir = Path(
+        tempfile.mkdtemp(prefix="hsi_gui_workspace_")
+    )
+
+    artifact_paths = dict(artifact_paths)
+    artifact_paths["reconstructed"] = save_hsi(
+        _with_run_info_hsi(result.reconstructed, result),
+        temporary_artifact_dir,
+        "reconstructed",
+    )
+    artifact_paths["compressed"] = save_compressed_hsi(
+        _with_run_info_compressed(result.compressed, result),
+        temporary_artifact_dir,
+        "compressed",
+    )
+
+    return artifact_paths, str(temporary_artifact_dir), True
+
 
 def main() -> int:
     try:
@@ -106,6 +166,9 @@ def main() -> int:
 
         result = gui_result.result
         artifact_paths = gui_result.artifact_paths or {}
+        artifact_paths, temporary_artifact_dir, temporary_artifacts = (
+            _ensure_workspace_artifacts(result, artifact_paths)
+        )
 
         emit({
             "type": "finished",
@@ -121,6 +184,8 @@ def main() -> int:
             "compressed_path": _path_to_str(
                 artifact_paths.get("compressed")
             ),
+            "temporary_artifacts": temporary_artifacts,
+            "temporary_artifact_dir": temporary_artifact_dir,
             "metrics": serialize_metrics(result.metrics),
         })
 

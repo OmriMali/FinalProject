@@ -150,7 +150,7 @@ class WorkspaceItem:
         if shape is None:
             return "-"
 
-        return " × ".join(str(value) for value in shape)
+        return " x ".join(str(value) for value in shape)
 
     @property
     def type_text(self) -> str:
@@ -242,6 +242,7 @@ def _infer_hsi_type(
 
     return WorkspaceItemType.ORIGINAL
 
+
 def _compression_method(metadata: HSIMetadata) -> Any:
     for key in (
         "method",
@@ -255,6 +256,7 @@ def _compression_method(metadata: HSIMetadata) -> Any:
             return value
 
     return None
+
 
 def _metadata_value(metadata: HSIMetadata, key: str) -> Any:
     """
@@ -273,6 +275,7 @@ def _metadata_value(metadata: HSIMetadata, key: str) -> Any:
 
     return _dict_deep_get(attributes, key)
 
+
 def _dict_deep_get(data: dict, key: str) -> Any:
     if key in data:
         return data[key]
@@ -286,8 +289,10 @@ def _dict_deep_get(data: dict, key: str) -> Any:
 
     return None
 
+
 def _slug(value: str) -> str:
     return str(value).strip().replace(" ", "_")
+
 
 def _format_method_name(method: str) -> str:
     method_map = {

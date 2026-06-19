@@ -7,7 +7,7 @@ from src.compressors.registry import get_compressor
 
 from src.ui.gui.models import WorkspaceItem
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
-from src.ui.gui.widgets import ResultsTab
+from src.ui.gui.widgets import VisualizationTab
 
 
 class VisualizationController:
@@ -20,9 +20,8 @@ class VisualizationController:
     - choosing the correct visualization path
     - constructing compressors for compressed-domain histograms
 
-    ResultsTab owns:
+    VisualizationTab owns:
     - buttons
-    - metrics table
     - matplotlib canvas
     - actual display methods
     """
@@ -30,11 +29,11 @@ class VisualizationController:
     def __init__(
         self,
         workspace_loader: WorkspaceLoader,
-        results_tab: ResultsTab,
+        visualization_tab: VisualizationTab,
         parent: QWidget | None = None,
     ):
         self.workspace_loader = workspace_loader
-        self.results_tab = results_tab
+        self.visualization_tab = visualization_tab
         self.parent = parent
 
     def show_rgb(self, items: list[WorkspaceItem]):
@@ -64,13 +63,13 @@ class VisualizationController:
             labels.append(item.plot_label)
 
         if len(hsis) == 1:
-            self.results_tab.display_rgb(
+            self.visualization_tab.display_rgb(
                 hsis[0],
                 title=labels[0],
             )
             return
 
-        self.results_tab.display_rgb_comparison(hsis, labels)
+        self.visualization_tab.display_rgb_comparison(hsis, labels)
 
     def show_band(
         self,
@@ -102,19 +101,19 @@ class VisualizationController:
             hsis.append(obj)
             labels.append(item.plot_label)
 
-        self.results_tab.set_band_limits_for_hsis(hsis)
-        band = self.results_tab.current_band()
+        self.visualization_tab.set_band_limits_for_hsis(hsis)
+        band = self.visualization_tab.current_band()
 
         try:
             if len(hsis) == 1:
-                self.results_tab.display_band(
+                self.visualization_tab.display_band(
                     hsi=hsis[0],
                     band=band,
                     label=labels[0],
                 )
                 return
 
-            self.results_tab.display_band_comparison(
+            self.visualization_tab.display_band_comparison(
                 hsis=hsis,
                 labels=labels,
                 band=band,
@@ -149,7 +148,7 @@ class VisualizationController:
             hsis.append(obj)
             labels.append(item.plot_label)
 
-        self.results_tab.start_spectra_plot(hsis, labels)
+        self.visualization_tab.start_spectra_plot(hsis, labels)
 
     def plot_histogram(self, items: list[WorkspaceItem]):
         item = self._single_item(
@@ -166,7 +165,7 @@ class VisualizationController:
             return
 
         if isinstance(obj, HSI):
-            self.results_tab.display_hsi_histogram(
+            self.visualization_tab.display_hsi_histogram(
                 hsi=obj,
                 title=f"{item.plot_label}_Histogram",
             )
@@ -182,7 +181,7 @@ class VisualizationController:
                 )
                 return
 
-            self.results_tab.display_compressed_histogram(
+            self.visualization_tab.display_compressed_histogram(
                 compressed=obj,
                 compressor=compressor,
                 title=f"{item.plot_label}_Compressed_Histogram",

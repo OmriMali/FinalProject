@@ -7,11 +7,11 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
-    QMessageBox,
 )
 
 from matplotlib.backends.backend_qtagg import (
@@ -20,26 +20,23 @@ from matplotlib.backends.backend_qtagg import (
 )
 from matplotlib.figure import Figure
 
-from src.core.hsi import HSI, CompressedHSI
 from src.compressors.base import Compressor
+from src.core.hsi import CompressedHSI, HSI
 from src.visuals.hsi import (
+    compare_spectra,
+    plot_compressed_histogram,
+    plot_histogram,
     plot_rgb,
     select_rgb_bands,
-    compare_spectra,
-    plot_histogram,
-    plot_compressed_histogram,
 )
 from src.visuals.style import DEFAULT_STYLE
-from src.ui.gui.models.workspace_item import WorkspaceItem
-from src.ui.gui.widgets.metrics_table import MetricsTableWidget
 
 
-class ResultsTab(QWidget):
+class VisualizationTab(QWidget):
     """
-    Results and visualization tab.
+    HSI visualization tab.
 
-    Owns visualization controls, metrics table, Matplotlib canvas,
-    and display state.
+    Owns visualization controls, Matplotlib canvas, and display state.
     """
 
     show_rgb_requested = Signal()
@@ -72,7 +69,6 @@ class ResultsTab(QWidget):
         layout.setSpacing(8)
 
         layout.addWidget(self._build_visualization_controls_panel())
-        layout.addWidget(self._build_metrics_panel())
         layout.addWidget(self._build_display_panel(), stretch=1)
 
     def _build_visualization_controls_panel(self) -> QGroupBox:
@@ -130,15 +126,6 @@ class ResultsTab(QWidget):
 
         return box
 
-    def _build_metrics_panel(self) -> QGroupBox:
-        box = QGroupBox("Metrics")
-        layout = QVBoxLayout(box)
-
-        self.metrics_table = MetricsTableWidget()
-        layout.addWidget(self.metrics_table)
-
-        return box
-
     def _build_display_panel(self) -> QGroupBox:
         box = QGroupBox("Display")
         layout = QVBoxLayout(box)
@@ -172,12 +159,6 @@ class ResultsTab(QWidget):
         self.show_band_button.setEnabled(can_show_band)
         self.plot_spectra_button.setEnabled(can_plot_spectra)
         self.plot_histogram_button.setEnabled(can_plot_histogram)
-
-    def show_item_metrics(self, item: WorkspaceItem):
-        self.metrics_table.show_item_metrics(item)
-
-    def show_metrics_comparison(self, items: list[WorkspaceItem]):
-        self.metrics_table.show_metrics_comparison(items)
 
     def display_rgb(self, hsi: HSI, title: str | None = None):
         self._set_display_state("rgb")
@@ -570,4 +551,3 @@ class ResultsTab(QWidget):
             )
         except ValueError:
             pass
-

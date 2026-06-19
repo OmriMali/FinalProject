@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.compressors.registry import get_compressor, list_compressors
+from src.ui.gui.models.workspace_item import WorkspaceItem
 from src.ui.gui.widgets.config_widgets import create_config_widget, read_widget_value
+from src.ui.gui.widgets.metrics_table import MetricsTableWidget
 
 
 class CompressionTab(QWidget):
@@ -66,6 +68,7 @@ class CompressionTab(QWidget):
         layout.addWidget(self.compressor_panel, stretch=1)
         layout.addWidget(self.sweep_panel)
         layout.addWidget(self._build_run_actions_panel())
+        layout.addWidget(self._build_metrics_panel())
 
         self._on_run_mode_changed(self.run_mode_combo.currentText())
 
@@ -202,6 +205,15 @@ class CompressionTab(QWidget):
 
         return box
 
+    def _build_metrics_panel(self) -> QGroupBox:
+        box = QGroupBox("Run Metrics")
+        layout = QVBoxLayout(box)
+
+        self.metrics_table = MetricsTableWidget()
+        layout.addWidget(self.metrics_table)
+
+        return box
+
     def read_experiment_settings(self) -> dict:
         experiment = self.experiment_edit.text().strip()
         results_dir = self.results_dir_edit.text().strip()
@@ -288,6 +300,15 @@ class CompressionTab(QWidget):
             message = "Running"
 
         self.run_status_label.setText(message)
+
+    def show_item_metrics(self, item: WorkspaceItem):
+        self.metrics_table.show_item_metrics(item)
+
+    def show_metrics_comparison(self, items: list[WorkspaceItem]):
+        self.metrics_table.show_metrics_comparison(items)
+
+    def clear_workspace_metrics(self):
+        self.metrics_table.show_no_metrics()
 
     def _refresh_run_buttons(self):
         if self._is_running:

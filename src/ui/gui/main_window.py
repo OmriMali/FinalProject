@@ -11,7 +11,12 @@ from PySide6.QtWidgets import (
 
 from src.ui.gui.models import WorkspaceItem, CompressionRunSpec
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
-from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
+from src.ui.gui.widgets import (
+    CompressionTab,
+    DataAnalysisTab,
+    VisualizationTab,
+    WorkspacePanel,
+)
 from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
 from src.ui.gui.utils import show_error, show_warning
 
@@ -42,7 +47,7 @@ class MainWindow(QMainWindow):
 
         self.visualization_controller = VisualizationController(
             workspace_loader=self.workspace_loader,
-            results_tab=self.results_tab,
+            visualization_tab=self.visualization_tab,
             parent=self,
             )
         
@@ -81,7 +86,8 @@ class MainWindow(QMainWindow):
         tabs.setDocumentMode(True)
 
         tabs.addTab(self._build_compression_tab(), "Compression")
-        tabs.addTab(self._build_results_tab(), "Results")
+        tabs.addTab(self._build_visualization_tab(), "Visualization")
+        tabs.addTab(self._build_data_analysis_tab(), "Data Analysis")
 
         return tabs
 
@@ -179,12 +185,16 @@ class MainWindow(QMainWindow):
         self._update_action_buttons()
 
     # ------------------------------------------------------------------
-    # Results Tab
+    # Visualization / Analysis Tabs
     # ------------------------------------------------------------------
 
-    def _build_results_tab(self) -> QWidget:
-        self.results_tab = ResultsTab()
-        return self.results_tab
+    def _build_visualization_tab(self) -> QWidget:
+        self.visualization_tab = VisualizationTab()
+        return self.visualization_tab
+
+    def _build_data_analysis_tab(self) -> QWidget:
+        self.data_analysis_tab = DataAnalysisTab()
+        return self.data_analysis_tab
 
     def _on_show_rgb(self):
         self.visualization_controller.show_rgb(
@@ -194,7 +204,7 @@ class MainWindow(QMainWindow):
     def _on_show_band(self):
         self.visualization_controller.show_band(
             self.selected_workspace_items(),
-            band=self.results_tab.current_band(),
+            band=self.visualization_tab.current_band(),
         )
 
     def _on_plot_spectra(self):
@@ -392,7 +402,7 @@ class MainWindow(QMainWindow):
             can_compress_decompress=exactly_one_hsi and not self.is_running,
         )
 
-        self.results_tab.set_action_availability(
+        self.visualization_tab.set_action_availability(
             can_show_rgb=n_hsis >= 1 and n_compressed == 0,
             can_show_band=n_hsis >= 1 and n_compressed == 0,
             can_plot_spectra=n_hsis >= 1 and n_compressed == 0,
@@ -403,15 +413,16 @@ class MainWindow(QMainWindow):
         self.workspace_panel.load_requested.connect(self._on_load_files)
         self.workspace_panel.selection_changed.connect(self._on_workspace_selection_changed)
         self.workspace_panel.workspace_changed.connect(self._on_workspace_changed)
-        self.workspace_panel.cleared.connect(self.results_tab.clear_canvas)
+        self.workspace_panel.cleared.connect(self.visualization_tab.clear_canvas)
+        self.workspace_panel.cleared.connect(self.compression_tab.clear_workspace_metrics)
 
         self.compression_tab.compress_decompress_requested.connect(self._on_compress_decompress)
         self.compression_tab.abort_requested.connect(self._abort_compression)
 
-        self.results_tab.show_rgb_requested.connect(self._on_show_rgb)
-        self.results_tab.show_band_requested.connect(self._on_show_band)
-        self.results_tab.plot_spectra_requested.connect(self._on_plot_spectra)
-        self.results_tab.plot_histogram_requested.connect(self._on_plot_histogram)
+        self.visualization_tab.show_rgb_requested.connect(self._on_show_rgb)
+        self.visualization_tab.show_band_requested.connect(self._on_show_band)
+        self.visualization_tab.plot_spectra_requested.connect(self._on_plot_spectra)
+        self.visualization_tab.plot_histogram_requested.connect(self._on_plot_histogram)
 
         self._connect_compression_controller()
         self._connect_artifact_controller()
@@ -423,7 +434,7 @@ class MainWindow(QMainWindow):
             if item.metrics is not None
         ]
 
-        self.results_tab.show_metrics_comparison(items)
+        self.compression_tab.show_metrics_comparison(items)
 
     def _connect_artifact_controller(self):
         self.artifact_controller.item_ready.connect(
@@ -431,7 +442,7 @@ class MainWindow(QMainWindow):
         )
 
         self.artifact_controller.metrics_item_ready.connect(
-            self.results_tab.show_item_metrics
+            self.compression_tab.show_item_metrics
         )
 
         self.artifact_controller.warning.connect(

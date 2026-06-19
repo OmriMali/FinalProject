@@ -18,6 +18,7 @@ loading logic.
 - `VisualizationTab`: HSI visualization controls and Matplotlib canvas
 - `DataAnalysisTab`: log loading, filtering, tables, and metric plots
 - `MetricsTableWidget`: metrics display table
+- `FigurePopoutWindow`: standalone Matplotlib figure viewer
 
 ## Controllers
 

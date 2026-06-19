@@ -35,6 +35,7 @@ from src.data_processing import (
     filter_notna,
     load_compression_log,
 )
+from src.ui.gui.widgets.figure_popout import FigurePopoutWindow
 from src.visuals.metrics import plot_metric_vs_metric, plot_runtime_comparison
 
 
@@ -61,6 +62,7 @@ class DataAnalysisTab(QWidget):
         self.log_df: pd.DataFrame | None = None
         self.filtered_df: pd.DataFrame | None = None
         self.filters: list[tuple[str, str, str]] = []
+        self.popout_windows: list[FigurePopoutWindow] = []
 
         self._build_ui()
 
@@ -184,8 +186,10 @@ class DataAnalysisTab(QWidget):
 
         self.plot_metric_button = QPushButton("Plot Metric")
         self.plot_runtime_button = QPushButton("Runtime")
+        self.popout_plot_button = QPushButton("Pop Out")
         self.plot_metric_button.clicked.connect(self._plot_metric)
         self.plot_runtime_button.clicked.connect(self._plot_runtime)
+        self.popout_plot_button.clicked.connect(self._popout_plot)
 
         controls.addWidget(QLabel("x"))
         controls.addWidget(self.x_combo)
@@ -198,6 +202,7 @@ class DataAnalysisTab(QWidget):
         controls.addWidget(self.aggregate_check)
         controls.addWidget(self.plot_metric_button)
         controls.addWidget(self.plot_runtime_button)
+        controls.addWidget(self.popout_plot_button)
 
         self.analysis_figure = Figure(figsize=(6, 4))
         self.analysis_canvas = FigureCanvas(self.analysis_figure)
@@ -566,10 +571,35 @@ class DataAnalysisTab(QWidget):
             self.aggregate_check,
             self.plot_metric_button,
             self.plot_runtime_button,
+            self.popout_plot_button,
         ]
 
         for widget in widgets:
             widget.setEnabled(enabled)
+
+    def _popout_plot(self):
+        if not self.analysis_figure.axes:
+            QMessageBox.information(
+                self,
+                "Pop out plot",
+                "There is no analysis plot to pop out yet.",
+            )
+            return
+
+        window = FigurePopoutWindow(
+            self.analysis_figure,
+            "Data Analysis Plot",
+            self,
+        )
+        window.finished.connect(
+            lambda _result, popout=window: self._forget_popout(popout)
+        )
+        self.popout_windows.append(window)
+        window.show()
+
+    def _forget_popout(self, window: FigurePopoutWindow):
+        if window in self.popout_windows:
+            self.popout_windows.remove(window)
 
     def _set_combo_items(self, combo: QComboBox, values: list[str]):
         current = combo.currentText()

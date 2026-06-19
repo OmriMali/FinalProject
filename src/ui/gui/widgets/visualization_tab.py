@@ -30,6 +30,7 @@ from src.visuals.hsi import (
     select_rgb_bands,
 )
 from src.visuals.style import DEFAULT_STYLE
+from src.ui.gui.widgets.figure_popout import FigurePopoutWindow
 
 
 class VisualizationTab(QWidget):
@@ -48,6 +49,7 @@ class VisualizationTab(QWidget):
         super().__init__()
 
         self._set_display_state(None)
+        self.popout_windows: list[FigurePopoutWindow] = []
 
         self.spectra_update_timer = QTimer(self)
         self.spectra_update_timer.setSingleShot(True)
@@ -129,6 +131,7 @@ class VisualizationTab(QWidget):
     def _build_display_panel(self) -> QGroupBox:
         box = QGroupBox("Display")
         layout = QVBoxLayout(box)
+        toolbar_layout = QHBoxLayout()
 
         self.display_figure = Figure(figsize=(6, 5))
         self.display_canvas = FigureCanvas(self.display_figure)
@@ -142,8 +145,13 @@ class VisualizationTab(QWidget):
             self.display_canvas,
             self,
         )
+        self.popout_canvas_button = QPushButton("Pop Out")
+        self.popout_canvas_button.clicked.connect(self.popout_canvas)
 
-        layout.addWidget(self.display_toolbar)
+        toolbar_layout.addWidget(self.display_toolbar)
+        toolbar_layout.addWidget(self.popout_canvas_button)
+
+        layout.addLayout(toolbar_layout)
         layout.addWidget(self.display_canvas, stretch=1)
 
         return box
@@ -299,6 +307,30 @@ class VisualizationTab(QWidget):
 
         self.display_figure.clear()
         self.display_canvas.draw_idle()
+
+    def popout_canvas(self):
+        if not self.display_figure.axes:
+            QMessageBox.information(
+                self,
+                "Pop out plot",
+                "There is no visualization to pop out yet.",
+            )
+            return
+
+        window = FigurePopoutWindow(
+            self.display_figure,
+            "Visualization",
+            self,
+        )
+        window.finished.connect(
+            lambda _result, popout=window: self._forget_popout(popout)
+        )
+        self.popout_windows.append(window)
+        window.show()
+
+    def _forget_popout(self, window: FigurePopoutWindow):
+        if window in self.popout_windows:
+            self.popout_windows.remove(window)
 
     def _set_display_state(
         self,

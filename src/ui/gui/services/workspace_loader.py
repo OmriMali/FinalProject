@@ -4,10 +4,7 @@ from pathlib import Path
 
 from src import io
 from src.core.hsi import HSI, CompressedHSI
-from src.ui.gui.models.workspace_item import (
-    WorkspaceItem,
-    WorkspaceItemKind,
-)
+from src.ui.gui.models.workspace_item import WorkspaceItem, WorkspaceItemType
 from src.ui.gui.services.metrics_extractor import MetricsExtractor
 
 
@@ -37,9 +34,15 @@ class WorkspaceLoader:
             path=path,
         )
 
+        run_info = hsi.metadata.attributes.get("run")
+        if run_info:
+            item_type = WorkspaceItemType.RECONSTRUCTION
+        else:
+            item_type = WorkspaceItemType.ORIGINAL
+
         return WorkspaceItem.from_hsi(
             hsi=hsi,
-            name=path.stem,
+            type=item_type,
             path=path,
             metrics=metrics,
             keep_cached=False,
@@ -53,7 +56,6 @@ class WorkspaceLoader:
 
         return WorkspaceItem.from_compressed_hsi(
             compressed=compressed,
-            name=path.stem,
             path=path,
             keep_cached=False,
         )
@@ -67,17 +69,17 @@ class WorkspaceLoader:
 
         if item.path is None:
             raise WorkspaceLoadError(
-                f"Workspace item '{item.name}' has no path and no cached object"
+                "Workspace item has no path and no cached object"
             )
 
-        if item.kind == WorkspaceItemKind.HSI:
+        if item.is_hsi:
             return self._load_hsi_from_path(item.path)
 
-        if item.kind == WorkspaceItemKind.COMPRESSED_HSI:
+        if item.is_compressed:
             return self._load_compressed_hsi_from_path(item.path)
 
         raise WorkspaceLoadError(
-            f"Unsupported workspace item kind: {item.kind}"
+            f"Unsupported workspace item type: {item.type}"
         )
 
     def _load_hsi_from_path(self, path: Path) -> HSI:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 
-from src.ui.gui.models import WorkspaceItem, WorkspaceItemRole
+from src.ui.gui.models import WorkspaceItem, WorkspaceItemType
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.services.metrics_extractor import LoadedMetric
 
@@ -16,7 +16,7 @@ class ArtifactController(QObject):
     Owns:
     - reading compressed/reconstructed artifact paths
     - loading artifacts through WorkspaceLoader
-    - assigning role/method/metrics
+    - assigning type/method/metrics
     - deserializing process metrics
     """
 
@@ -66,7 +66,7 @@ class ArtifactController(QObject):
             )
             return None
 
-        item.role = WorkspaceItemRole.RECONSTRUCTION
+        item.type = WorkspaceItemType.RECONSTRUCTION
         item.method = method
         item.metrics = self._deserialize_metrics(metrics)
 
@@ -89,6 +89,7 @@ class ArtifactController(QObject):
             return None
 
         item.method = method
+        item.type = WorkspaceItemType.COMPRESSED
 
         self.item_ready.emit(item)
 

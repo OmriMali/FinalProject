@@ -1,1 +1,1 @@
-from src.ui.gui.models.workspace_item import WorkspaceItem, WorkspaceItemKind, WorkspaceItemRole
+from src.ui.gui.models.workspace_item import WorkspaceItem, WorkspaceItemType

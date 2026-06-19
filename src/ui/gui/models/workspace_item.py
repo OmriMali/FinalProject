@@ -9,77 +9,21 @@ from uuid import uuid4
 from src.core.hsi import HSI, CompressedHSI, HSIMetadata
 
 
-class WorkspaceItemKind(Enum):
-    """
-    Type of object represented in the GUI workspace.
-    """
-
-    HSI = "HSI"
-    COMPRESSED_HSI = "CompressedHSI"
-
-class WorkspaceItemRole(Enum):
-    """
-    Logical role of an item in the workspace.
-    """
-
+class WorkspaceItemType(Enum):
     ORIGINAL = "Original"
     RECONSTRUCTION = "Reconstruction"
     COMPRESSED = "Compressed"
     UNKNOWN = "Unknown"
 
+
 @dataclass
 class WorkspaceItem:
-    """
-    Lightweight GUI-side description of a workspace item.
-
-    The actual HSI / CompressedHSI object is not kept in memory by default.
-    It can be loaded later from `path` when needed.
-
-    Parameters
-    ----------
-    item_id : str
-        Internal unique ID used by the GUI table.
-
-    name : str
-        Display name.
-
-    kind : WorkspaceItemKind
-        Type of represented object.
-
-    role : WorkspaceItemRole
-        Logical role, such as original, reconstruction, or compressed.
-
-    metadata : HSIMetadata
-        Metadata used for display and action decisions.
-
-    path : Path or None, optional
-        File path used to reload the object.
-
-    cached_object : HSI or CompressedHSI or None, optional
-        Optional in-memory object. Used mainly for newly generated results.
-    """
-
-    DISPLAY_COLUMNS: ClassVar[tuple[tuple[str, str], ...]] = (
-        ("#", "number_text"),
-        ("Name", "name"),
-        ("Kind", "kind_text"),
-        ("Role", "role_text"),
-        ("Scene", "scene_name"),
-        ("Section", "section_text"),
-        ("Shape", "shape_text"),
-        ("Method", "method_text"),
-        ("Directory", "directory_text"),
-    )
-
     item_id: str
-    name: str
-    kind: WorkspaceItemKind
-    role: WorkspaceItemRole
+    type: WorkspaceItemType
     metadata: HSIMetadata
     path: Path | None = None
-    method: str | None = None
-    directory: Path | None = None
     number: int | None = None
+    method: str | None = None
     metrics: dict | None = None
     cached_object: HSI | CompressedHSI | None = field(
         default=None,
@@ -87,41 +31,44 @@ class WorkspaceItem:
         compare=False,
     )
 
+    DISPLAY_COLUMNS: ClassVar[tuple[str, ...]] = (
+        "#",
+        "Scene",
+        "Row",
+        "Col",
+        "Shape",
+        "Type",
+        "Method",
+        "Path",
+    )
+
     @classmethod
     def from_hsi(
         cls,
         hsi: HSI,
-        name: str | None = None,
         path: Path | None = None,
-        role: WorkspaceItemRole | None = None,
+        type: WorkspaceItemType | None = None,
         number: int | None = None,
         method: str | None = None,
-        directory: Path | None = None,
         metrics: dict | None = None,
         keep_cached: bool = False,
     ) -> WorkspaceItem:
         metadata = hsi.metadata
 
-        if name is None:
-            name = _default_item_name(metadata, path)
-
-        if role is None:
-            role = _infer_hsi_role(metadata, path)
+        if type is None:
+            type = _infer_hsi_type(metadata, path)
 
         if method is None:
             method = _compression_method(metadata)
 
         return cls(
             item_id=str(uuid4()),
-            name=name,
-            kind=WorkspaceItemKind.HSI,
-            role=role,
+            type=type,
             metadata=metadata,
             path=path,
             number=number,
             method=method,
             metrics=metrics,
-            directory=directory,
             cached_object=hsi if keep_cached else None,
         )
 
@@ -129,51 +76,97 @@ class WorkspaceItem:
     def from_compressed_hsi(
         cls,
         compressed: CompressedHSI,
-        name: str | None = None,
         path: Path | None = None,
         number: int | None = None,
         method: str | None = None,
-        directory: Path | None = None,
         metrics: dict | None = None,
         keep_cached: bool = False,
     ) -> WorkspaceItem:
         metadata = compressed.metadata
-
-        if name is None:
-            name = _default_item_name(metadata, path)
 
         if method is None:
             method = _compression_method(metadata)
 
         return cls(
             item_id=str(uuid4()),
-            name=name,
-            kind=WorkspaceItemKind.COMPRESSED_HSI,
-            role=WorkspaceItemRole.COMPRESSED,
+            type=WorkspaceItemType.COMPRESSED,
             metadata=metadata,
             path=path,
             number=number,
-            metrics=metrics,
             method=method,
-            directory=directory,
+            metrics=metrics,
             cached_object=compressed if keep_cached else None,
         )
 
+    @property
+    def is_hsi(self) -> bool:
+        return self.type in {
+            WorkspaceItemType.ORIGINAL,
+            WorkspaceItemType.RECONSTRUCTION,
+        }
+
+    @property
+    def is_compressed(self) -> bool:
+        return self.type == WorkspaceItemType.COMPRESSED
+
     @classmethod
     def table_headers(cls) -> list[str]:
-        """
-        Return table headers for workspace display.
-        """
-        return [header for header, _ in cls.DISPLAY_COLUMNS]
+        return list(cls.DISPLAY_COLUMNS)
 
     def table_values(self) -> list[str]:
-        """
-        Return row values for workspace display.
-        """
         return [
-            str(getattr(self, attr))
-            for _, attr in self.DISPLAY_COLUMNS
+            self.number_text,
+            self.scene_text,
+            self.row_text,
+            self.col_text,
+            self.shape_text,
+            self.type_text,
+            self.method_text,
+            self.path_text,
         ]
+
+    @property
+    def number_text(self) -> str:
+        return "-" if self.number is None else str(self.number)
+
+    @property
+    def scene_text(self) -> str:
+        return self.metadata.scene_name or "-"
+
+    @property
+    def row_text(self) -> str:
+        row = getattr(self.metadata, "section_row", None)
+        return "-" if row is None else str(row)
+
+    @property
+    def col_text(self) -> str:
+        col = getattr(self.metadata, "section_col", None)
+        return "-" if col is None else str(col)
+
+    @property
+    def shape_text(self) -> str:
+        shape = getattr(self.metadata, "shape", None)
+
+        if shape is None:
+            return "-"
+
+        return " × ".join(str(value) for value in shape)
+
+    @property
+    def type_text(self) -> str:
+        return self.type.value
+
+    @property
+    def method_text(self) -> str:
+        if self.method is not None:
+            return str(self.method)
+
+        method = _compression_method(self.metadata)
+        return "-" if method is None else str(method)
+
+    @property
+    def path_text(self) -> str:
+        return "-" if self.path is None else str(self.path)
 
     @property
     def plot_label(self) -> str:
@@ -213,93 +206,27 @@ class WorkspaceItem:
     def _method_slug(self) -> str:
         method = self.method_text
 
-        if method == "-":
-            if self.role == WorkspaceItemRole.ORIGINAL:
-                return "Original"
+        if method != "-":
+            return _format_method_name(method)
 
-            if self.role == WorkspaceItemRole.RECONSTRUCTION:
-                return "Reconstruction"
+        if self.type == WorkspaceItemType.ORIGINAL:
+            return "Original"
 
-            if self.role == WorkspaceItemRole.COMPRESSED:
-                return "Compressed"
+        if self.type == WorkspaceItemType.RECONSTRUCTION:
+            return "Reconstruction"
 
-            return ""
+        if self.type == WorkspaceItemType.COMPRESSED:
+            return "Compressed"
 
-        return _format_method_name(method)
+        return ""
 
-    @property
-    def kind_text(self) -> str:
-        return self.kind.value
 
-    @property
-    def role_text(self) -> str:
-        return self.role.value
-
-    @property
-    def scene_name(self) -> str:
-        return self.metadata.scene_name or "-"
-
-    @property
-    def section_text(self) -> str:
-        row = getattr(self.metadata, "section_row", None)
-        col = getattr(self.metadata, "section_col", None)
-
-        if row is None or col is None:
-            return "whole"
-
-        return f"r{row}, c{col}"
-
-    @property
-    def shape_text(self) -> str:
-        h, w, b = self.metadata.shape
-        return f"({h}, {w}, {b})"
-
-    @property
-    def method_text(self) -> str:
-        if self.method is not None:
-            return str(self.method)
-
-        method = _compression_method(self.metadata)
-        return "-" if method is None else str(method)
-
-    @property
-    def directory_text(self) -> str:
-        if self.directory is not None:
-            return str(self.directory)
-
-        if self.path is not None:
-            return str(self.path.parent)
-
-        return "-"
-
-    @property
-    def number_text(self) -> str:
-        return "-" if self.number is None else str(self.number)
-
-def _default_item_name(
+def _infer_hsi_type(
     metadata: HSIMetadata,
     path: Path | None,
-) -> str:
-    if path is not None:
-        return path.stem
-
-    if metadata.scene_name is not None:
-        row = getattr(metadata, "section_row", None)
-        col = getattr(metadata, "section_col", None)
-
-        if row is not None and col is not None:
-            return f"{metadata.scene_name}_r{row}_c{col}"
-
-        return metadata.scene_name
-
-    return "workspace_item"
-
-def _infer_hsi_role(
-    metadata: HSIMetadata,
-    path: Path | None,
-) -> WorkspaceItemRole:
+) -> WorkspaceItemType:
     if _compression_method(metadata) is not None:
-        return WorkspaceItemRole.RECONSTRUCTION
+        return WorkspaceItemType.RECONSTRUCTION
 
     if path is not None:
         path_text = f"{path.stem} {path.parent.name}".lower()
@@ -311,9 +238,9 @@ def _infer_hsi_role(
         )
 
         if any(token in path_text for token in reconstruction_tokens):
-            return WorkspaceItemRole.RECONSTRUCTION
+            return WorkspaceItemType.RECONSTRUCTION
 
-    return WorkspaceItemRole.ORIGINAL
+    return WorkspaceItemType.ORIGINAL
 
 def _compression_method(metadata: HSIMetadata) -> Any:
     for key in (
@@ -339,7 +266,12 @@ def _metadata_value(metadata: HSIMetadata, key: str) -> Any:
         if value is not None:
             return value
 
-    return _dict_deep_get(metadata.attributes, key)
+    attributes = getattr(metadata, "attributes", None)
+
+    if not isinstance(attributes, dict):
+        return None
+
+    return _dict_deep_get(attributes, key)
 
 def _dict_deep_get(data: dict, key: str) -> Any:
     if key in data:

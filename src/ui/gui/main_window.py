@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
 )
 
-from src.ui.gui.models import WorkspaceItem, WorkspaceItemKind
+from src.ui.gui.models import WorkspaceItem
 from src.ui.gui.services import WorkspaceLoader, WorkspaceLoadError
 from src.ui.gui.widgets import WorkspacePanel, CompressionTab, ResultsTab
 from src.ui.gui.controllers import CompressionController, VisualizationController, ArtifactController
@@ -101,7 +101,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if item.kind != WorkspaceItemKind.HSI:
+        if not item.is_hsi:
             show_warning(
                 self,
                 "Compress + Decompress",
@@ -322,13 +322,13 @@ class MainWindow(QMainWindow):
         selected_hsis = [
             item
             for item in selected_items
-            if item.kind == WorkspaceItemKind.HSI
+            if item.is_hsi
         ]
 
         selected_compressed = [
             item
             for item in selected_items
-            if item.kind == WorkspaceItemKind.COMPRESSED_HSI
+            if item.is_compressed
         ]
 
         n_selected = len(selected_items)

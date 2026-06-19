@@ -251,22 +251,11 @@ class VisualizationTab(QWidget):
         hsi: HSI,
         title: str | None = None,
     ):
-        self._set_display_state("histogram")
-
-        self.display_figure.clear()
-        ax = self.display_figure.add_subplot(1, 1, 1)
-
-        plot_histogram(
-            hsi=hsi,
-            band=None,
-            bins=256,
-            style=DEFAULT_STYLE,
-            ax=ax,
-            title=title,
+        self.display_histograms(
+            objects=[hsi],
+            labels=[title or "HSI"],
+            compressors=[None],
         )
-
-        self.display_figure.tight_layout()
-        self.display_canvas.draw_idle()
 
     def display_compressed_histogram(
         self,
@@ -274,30 +263,73 @@ class VisualizationTab(QWidget):
         compressor: Compressor,
         title: str | None = None,
     ):
-        self._set_display_state("compressed_histogram")
+        self.display_histograms(
+            objects=[compressed],
+            labels=[title or "Compressed HSI"],
+            compressors=[compressor],
+        )
+
+    def display_histograms(
+        self,
+        objects: list[HSI | CompressedHSI],
+        labels: list[str],
+        compressors: list[Compressor | None],
+    ):
+        self._set_display_state("histogram")
+
+        if not objects:
+            return
 
         self.display_figure.clear()
-        ax = self.display_figure.add_subplot(1, 1, 1)
 
-        try:
+        n_items = len(objects)
+        n_cols = min(3, n_items)
+        n_rows = math.ceil(n_items / n_cols)
+        axes = self.display_figure.subplots(
+            n_rows,
+            n_cols,
+            squeeze=False,
+        ).ravel()
+
+        first_hsi_axis = None
+
+        for ax, obj, label, compressor in zip(
+            axes,
+            objects,
+            labels,
+            compressors,
+        ):
+            if isinstance(obj, HSI):
+                if first_hsi_axis is None:
+                    first_hsi_axis = ax
+                else:
+                    ax.sharex(first_hsi_axis)
+                    ax.sharey(first_hsi_axis)
+
+                plot_histogram(
+                    hsi=obj,
+                    band=None,
+                    bins=256,
+                    style=DEFAULT_STYLE,
+                    ax=ax,
+                    title=label,
+                )
+                continue
+
+            if compressor is None:
+                raise ValueError(f"Missing compressor for '{label}'.")
+
             plot_compressed_histogram(
-                compressed=compressed,
+                compressed=obj,
                 compressor=compressor,
                 bins=256,
                 style=DEFAULT_STYLE,
                 ax=ax,
-                title=title,
+                title=label,
             )
-        except NotImplementedError as exc:
-            QMessageBox.warning(self, "Histogram", str(exc))
-            return
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Histogram",
-                f"Could not decode compressed values:\n{exc}",
-            )
-            return
+
+        for ax in axes[n_items:]:
+            ax.set_axis_off()
 
         self.display_figure.tight_layout()
         self.display_canvas.draw_idle()

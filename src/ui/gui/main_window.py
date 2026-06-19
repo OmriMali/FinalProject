@@ -395,8 +395,7 @@ class MainWindow(QMainWindow):
         n_compressed = len(selected_compressed)
 
         exactly_one_hsi = n_selected == 1 and n_hsis == 1
-        exactly_one_compressed = n_selected == 1 and n_compressed == 1
-        exactly_one_histogram_item = exactly_one_hsi or exactly_one_compressed
+        can_plot_histogram = (n_hsis + n_compressed) > 0
 
         self.compression_tab.set_action_availability(
             can_compress_decompress=exactly_one_hsi and not self.is_running,
@@ -406,7 +405,7 @@ class MainWindow(QMainWindow):
             can_show_rgb=n_hsis >= 1 and n_compressed == 0,
             can_show_band=n_hsis >= 1 and n_compressed == 0,
             can_plot_spectra=n_hsis >= 1 and n_compressed == 0,
-            can_plot_histogram=exactly_one_histogram_item,
+            can_plot_histogram=can_plot_histogram,
         )
 
     def _connect_signals(self):

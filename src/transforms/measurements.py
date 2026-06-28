@@ -80,7 +80,7 @@ def subsampling(m, n, rng=None, **kwargs):
 @register_measurement("BERNOULLI")
 def bernoulli(m, n, rng=None, p: str | None = None, **kwargs):
     if p is None:
-        p = 0.1
+        p = 0.05
     else:
         p = float(p)
         if p >= 1 or p <= 0:

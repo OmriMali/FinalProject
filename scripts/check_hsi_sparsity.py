@@ -52,11 +52,7 @@ def main():
     remove_signal_mean = False
     normalize_signal_norm = False
 
-    threshold_abs = 0.0
-    threshold_rel = 1e-3
-
-    k_values = [1, 2, 3, 4, 8, 16, 32]
-    cumulative_max_k = 80
+    cumulative_max_k = 30
     omp_tol = 1e-6
 
     # ===== Load and prepare =====
@@ -79,10 +75,7 @@ def main():
             signals=signals,
             basis_name=basis_name,
             label=label,
-            k_values=k_values,
             cumulative_max_k=cumulative_max_k,
-            threshold_abs=threshold_abs,
-            threshold_rel=threshold_rel,
             omp_tol=omp_tol,
         )
         results.append(result)
@@ -94,12 +87,11 @@ def main():
         total_signal_count=hsi.data.shape[0] * hsi.data.shape[1],
         remove_signal_mean=remove_signal_mean,
         normalize_signal_norm=normalize_signal_norm,
-        threshold_abs=threshold_abs,
-        threshold_rel=threshold_rel,
         results=results,
     )
 
-    _plot_results(results)
+    _plot_energy(results)
+    plt.show()
 
 
 def _sample_spectral_signals(
@@ -162,17 +154,14 @@ def _analyze_basis(
     signals: np.ndarray,
     basis_name: str,
     label: str,
-    k_values: list[int],
     cumulative_max_k: int,
-    threshold_abs: float,
-    threshold_rel: float,
     omp_tol: float,
 ) -> dict:
     signal_length = signals.shape[1]
     basis = get_sparse_base(basis_name, signal_length)
     basis = _normalize_columns(basis)
 
-    max_k = min(max(k_values), basis.shape[1])
+    max_k = min(cumulative_max_k, basis.shape[1])
     coefficient_method = _coefficient_method(basis)
 
     print(f"Analyzing basis: {label}")
@@ -188,23 +177,6 @@ def _analyze_basis(
             label=label,
         )
 
-    l0_counts = _l0_counts(
-        coefficients,
-        threshold_abs=threshold_abs,
-        threshold_rel=threshold_rel,
-    )
-
-    valid_k_values = [
-        k
-        for k in k_values
-        if 1 <= k <= basis.shape[1]
-    ]
-    errors = _reconstruction_errors(
-        signals,
-        basis,
-        coefficients,
-        valid_k_values,
-    )
     cumulative_energy = _cumulative_energy(
         coefficients,
         max_k=min(cumulative_max_k, basis.shape[1]),
@@ -212,13 +184,9 @@ def _analyze_basis(
 
     return {
         "label": label,
-        "basis_name": basis_name,
         "basis_shape": basis.shape,
         "coefficient_method": coefficient_method,
-        "num_atoms": basis.shape[1],
-        "l0_counts": l0_counts,
         "cumulative_energy": cumulative_energy,
-        "errors": errors,
     }
 
 
@@ -279,42 +247,6 @@ def _omp_coefficients(
     return coefficients
 
 
-def _l0_counts(
-    coefficients: np.ndarray,
-    threshold_abs: float,
-    threshold_rel: float,
-) -> np.ndarray:
-    max_abs = np.max(np.abs(coefficients), axis=1, keepdims=True)
-    thresholds = np.maximum(threshold_abs, threshold_rel * max_abs)
-
-    return np.count_nonzero(np.abs(coefficients) > thresholds, axis=1)
-
-
-def _reconstruction_errors(
-    signals: np.ndarray,
-    basis: np.ndarray,
-    coefficients: np.ndarray,
-    k_values: list[int],
-) -> dict[int, np.ndarray]:
-    errors = {}
-    signal_norms = np.linalg.norm(signals, axis=1)
-    signal_norms[signal_norms == 0] = 1.0
-
-    abs_coefficients = np.abs(coefficients)
-
-    for k in k_values:
-        selected = np.zeros_like(coefficients)
-        indices = np.argpartition(abs_coefficients, -k, axis=1)[:, -k:]
-        values = np.take_along_axis(coefficients, indices, axis=1)
-        np.put_along_axis(selected, indices, values, axis=1)
-
-        reconstructed = selected @ basis.T
-        residuals = signals - reconstructed
-        errors[k] = np.linalg.norm(residuals, axis=1) / signal_norms
-
-    return errors
-
-
 def _cumulative_energy(
     coefficients: np.ndarray,
     max_k: int,
@@ -339,8 +271,6 @@ def _print_summary(
     total_signal_count: int,
     remove_signal_mean: bool,
     normalize_signal_norm: bool,
-    threshold_abs: float,
-    threshold_rel: float,
     results: list[dict],
 ) -> None:
     print()
@@ -352,12 +282,10 @@ def _print_summary(
     print(f"Bases compared:         {', '.join(result['label'] for result in results)}")
     print(f"Remove signal mean:     {remove_signal_mean}")
     print(f"Normalize signal norm:  {normalize_signal_norm}")
-    print(f"Nonzero threshold:      max({threshold_abs:g}, {threshold_rel:g} * max_abs)")
     print()
 
-    _print_table("Basis and sparsity", _basis_summary_rows(results))
+    _print_table("Basis details", _basis_summary_rows(results))
     _print_table("Atoms needed for coefficient energy", _energy_summary_rows(results))
-    _print_table("Mean reconstruction error by K", _error_summary_rows(results))
 
     print()
 
@@ -368,26 +296,15 @@ def _basis_summary_rows(results: list[dict]) -> list[list[str]]:
             "Basis",
             "Shape",
             "Method",
-            "Mean l0",
-            "Median l0",
-            "P90 l0",
-            "Max l0",
-            "Mean ratio",
         ]
     ]
 
     for result in results:
-        l0_counts = result["l0_counts"]
         rows.append(
             [
                 result["label"],
                 _format_shape(result["basis_shape"]),
                 result["coefficient_method"],
-                f"{l0_counts.mean():.2f}",
-                f"{np.median(l0_counts):.2f}",
-                f"{np.percentile(l0_counts, 90):.2f}",
-                f"{l0_counts.max():.0f}",
-                f"{l0_counts.mean() / result['num_atoms']:.4f}",
             ]
         )
 
@@ -420,28 +337,6 @@ def _energy_summary_rows(results: list[dict]) -> list[list[str]]:
                     f"{np.percentile(needed, 90):.2f}",
                 ]
             )
-
-        rows.append(row)
-
-    return rows
-
-
-def _error_summary_rows(results: list[dict]) -> list[list[str]]:
-    all_k_values = sorted(
-        {
-            k
-            for result in results
-            for k in result["errors"].keys()
-        }
-    )
-    rows = [["K"] + [result["label"] for result in results]]
-
-    for k in all_k_values:
-        row = [str(k)]
-
-        for result in results:
-            error = result["errors"].get(k)
-            row.append("-" if error is None else f"{error.mean():.6f}")
 
         rows.append(row)
 
@@ -490,14 +385,6 @@ def _atoms_needed_for_energy(
     return indices
 
 
-def _plot_results(results: list[dict]) -> None:
-    _plot_energy(results)
-    _plot_error(results)
-    _plot_l0_histograms(results)
-
-    plt.show()
-
-
 def _plot_energy(results: list[dict]) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
 
@@ -506,66 +393,15 @@ def _plot_energy(results: list[dict]) -> None:
         cumulative_energy = result["cumulative_energy"]
 
         k = cumulative_energy["k"]
-        ax.plot(k, cumulative_energy["mean"], label=label)
+        ax.plot(k, 100 * cumulative_energy["mean"], label=label)
 
     ax.set_title("Cumulative Coefficient Energy")
     ax.set_xlabel("Largest coefficients kept")
-    ax.set_ylabel("Mean energy fraction")
-    ax.set_ylim(0, 1.02)
+    ax.set_ylabel("Mean cumulative energy (%)")
+    ax.set_ylim(0, 102)
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
-
-
-def _plot_error(results: list[dict]) -> None:
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    for result in results:
-        label = result["label"]
-        errors = result["errors"]
-
-        k_values = np.array(list(errors.keys()))
-        mean_errors = np.array([errors[k].mean() for k in k_values])
-        ax.plot(k_values, mean_errors, marker="o", label=label)
-
-    ax.set_title("Sparsity vs Reconstruction Error")
-    ax.set_xlabel("K coefficients kept")
-    ax.set_ylabel("Mean relative reconstruction error")
-    ax.set_xscale("log", base=2)
-    ax.set_yscale("log")
-    ax.grid(True, which="both", alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-
-
-def _plot_l0_histograms(results: list[dict]) -> None:
-    for result in results:
-        label = result["label"]
-        l0_counts = result["l0_counts"]
-
-        fig, ax = plt.subplots(figsize=(8, 5))
-        bins = np.arange(l0_counts.min(), l0_counts.max() + 2) - 0.5
-
-        ax.hist(l0_counts, bins=bins, edgecolor="black", alpha=0.8)
-        ax.axvline(
-            l0_counts.mean(),
-            color="tab:red",
-            linestyle="--",
-            label="mean",
-        )
-        ax.axvline(
-            np.median(l0_counts),
-            color="tab:orange",
-            linestyle="--",
-            label="median",
-        )
-
-        ax.set_title(f"Coefficient Sparsity Histogram - {label}")
-        ax.set_xlabel("Nonzero coefficients per spectrum")
-        ax.set_ylabel("Number of spectra")
-        ax.grid(True, axis="y", alpha=0.3)
-        ax.legend()
-        fig.tight_layout()
 
 
 if __name__ == "__main__":

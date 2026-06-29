@@ -9,14 +9,14 @@ def main():
 
     # ===== Run info ====
     trainer_name = "ksvd"           # "ksvd"
-    experiment = "book_parameter_selection"
+    experiment = "book_results"
 
     save_dictionary = True
     save_coefficients = True
 
     # ===== Paths =====
     signals_dir = r"data\training_signals"
-    signals_name = "jasper_ridge_split_01_diverse_spectral.npz"
+    signals_name = "jasper_ridge_split_01_project_book.npz"
 
     results_dir = "results"
 
@@ -24,7 +24,7 @@ def main():
     configs = {
         "ksvd": dictionary_trainers.K_SVDConfig(
         K=400,
-        T_0=5,
+        T_0=4,
         tol=0.01,
         max_iter=50
         )

@@ -9,8 +9,8 @@ def main():
     trim_border = True
     crop_to_sections = True
 
-    bad_spectral_ranges = [(104, 108), (150, 163)]
-    bad_spectral_bands = [220]
+    bad_spectral_ranges = [(107, 112), (153, 167)]
+    bad_spectral_bands = [222]
     section_size = (256, 256)
 
     # ===== Paths =====
@@ -20,8 +20,8 @@ def main():
     
     # ===== Scenes =====
     scenes = [
-                # "JasperRidge",
-                "MoffetField", 
+                "JasperRidge",
+                # "MoffetField", 
                 # "Cuprite",
               ]
 

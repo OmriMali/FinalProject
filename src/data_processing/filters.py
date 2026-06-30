@@ -1,6 +1,8 @@
-import pandas as pd
 import operator
+from pathlib import Path
 from typing import Literal
+
+import pandas as pd
 
 
 _OPERATOR_MAP = {
@@ -138,6 +140,125 @@ def filter_notna(
     return df.dropna(
         subset=columns
     ).copy()
+
+
+def drop_columns(
+    df: pd.DataFrame,
+    columns: list[str],
+) -> pd.DataFrame:
+    """
+    Return a dataframe without the selected columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    columns : list[str]
+        Columns to remove.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of the dataframe without the selected columns.
+    """
+
+    missing = [
+        column
+        for column in columns
+        if column not in df.columns
+    ]
+
+    if missing:
+        raise ValueError(f"Unknown columns: {missing}")
+
+    return df.drop(columns=columns).copy()
+
+
+def keep_columns(
+    df: pd.DataFrame,
+    columns: list[str],
+) -> pd.DataFrame:
+    """
+    Return a dataframe containing only the selected columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    columns : list[str]
+        Columns to retain, in the desired output order.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of the dataframe containing only the selected columns.
+    """
+
+    missing = [
+        column
+        for column in columns
+        if column not in df.columns
+    ]
+
+    if missing:
+        raise ValueError(f"Unknown columns: {missing}")
+
+    return df.loc[:, columns].copy()
+
+
+def filter_has_reconstructed_hsi(
+    df: pd.DataFrame,
+    artifact_column: str = "artifact_dir",
+    base_dir: str | Path | None = None,
+) -> pd.DataFrame:
+    """
+    Keep rows whose artifact directory contains a reconstructed HSI.
+
+    A reconstructed HSI is identified by the ``reconstructed.npz`` file
+    written by the artifact logger.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    artifact_column : str, optional
+        Column containing artifact directory paths.
+
+    base_dir : str | Path | None, optional
+        Directory against which relative artifact paths are resolved. If
+        omitted, paths are resolved relative to the current working directory.
+
+    Returns
+    -------
+    pd.DataFrame
+        Rows whose artifact directory contains ``reconstructed.npz``.
+    """
+
+    if artifact_column not in df.columns:
+        raise ValueError(f"Unknown column: {artifact_column}")
+
+    root = Path(base_dir) if base_dir is not None else None
+
+    def has_reconstructed_hsi(value) -> bool:
+        if not isinstance(value, (str, Path)):
+            return False
+
+        if isinstance(value, str) and not value.strip():
+            return False
+
+        artifact_dir = Path(value)
+
+        if root is not None and not artifact_dir.is_absolute():
+            artifact_dir = root / artifact_dir
+
+        return (artifact_dir / "reconstructed.npz").is_file()
+
+    mask = df[artifact_column].map(has_reconstructed_hsi)
+
+    return df[mask].copy()
 
 
 def filter_compare(

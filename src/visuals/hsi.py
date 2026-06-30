@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 
 from src.core.hsi import HSI
+from src.visuals.annotations import add_panel_text, format_metrics_text
 from src.visuals.style import (
     apply_plot_style,
     get_style_color,
@@ -375,7 +376,8 @@ def compare_rgb(
         Lower and upper percentiles used for contrast stretching.
 
     metrics : dict[str, dict[str, float]] | None, optional
-        Optional mapping from label to metric names and values.
+        Optional mapping from each HSI label to its metric names and values.
+        Metrics are displayed inside the corresponding image panel.
 
     style : dict | None, optional
         Plot style dictionary.
@@ -422,9 +424,21 @@ def compare_rgb(
             percentiles=percentiles,
             style=style,
             ax=ax,
-            title=_format_title_with_metrics(label, metrics),
+            title=label,
             show_axis=False,
         )
+
+        if metrics is not None and label in metrics:
+            metric_values = metrics[label]
+            metric_text = format_metrics_text(
+                metric_values,
+                fields=tuple(metric_values),
+            )
+            add_panel_text(
+                ax,
+                metric_text,
+                style=style,
+            )
 
     if title is not None:
         fig.suptitle(title)
@@ -732,19 +746,3 @@ def _validate_matching_lengths(
         raise ValueError("At least one HSI must be provided")
 
 
-def _format_title_with_metrics(
-    label: str,
-    metrics: dict[str, dict[str, float]] | None = None,
-) -> str:
-    """
-    Format image title with optional metrics.
-    """
-    if metrics is None or label not in metrics:
-        return label
-
-    metric_text = ", ".join(
-        f"{name}: {value:.3g}"
-        for name, value in metrics[label].items()
-    )
-
-    return f"{label}\n{metric_text}"

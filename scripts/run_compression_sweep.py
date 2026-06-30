@@ -31,26 +31,27 @@ def main():
         "hybrid",
         # "ccsds123",
     ]
-    experiment = "compressors_comparison"
+    experiment = "project_book_results_comparison"
     ber = 0
     tags = None
-    
+
     save_reconstructed = False
     save_compressed = False
 
     use_split = False
-    repetitions = {"ccsds123": 1, "hcs1d": 10, "hybrid": 10}
+    repetitions = {"ccsds123": 1, "hcs1d": 5, "hybrid": 5}
 
     # ===== Paths =====
     split_csv = r"resources\splits\jasper_ridge_split_01.csv"
     hsi_dir = r"data\sections\JasperRidge"
-    hsi_name = "JasperRidge_r11_c1"
-    
+    hsi_name = "JasperRidge_r6_c2"
+
     dict_dir = r"resources\dictionaries"
-    dict_name = "jasper_ridge_split_01_ksvd_400_atoms.npz"
+    dict_name = "jasper_ridge_split_01_project_book.npz"
 
     results_dir = r"results"
-    protect_bitstream=ber>0
+    protect_bitstream = ber > 0
+
     # ===== Load HSIs =====
     test_hsis = []
     if use_split:
@@ -58,7 +59,7 @@ def main():
     else:
         test_hsis.append(io.load_hsi(hsi_dir, hsi_name))
 
-    # ===== Pipeline ===== 
+    # ===== Pipeline =====
     runner = Runner(
         callbacks=[
             ArtifactLoggerCallback(
@@ -81,12 +82,12 @@ def main():
             "config_cls": compressors.HCS1DConfig,
             "fixed": {
                 "axis": Axis.SPECTRAL,
-                "Phi": "BERNOULLI",
                 "Psi": learned_base,
-                "K": 3
+                "Phi": "BERNOULLI:p=0.05",
+                "K": 6,
             },
             "sweep": {
-                "sr": [1/2, 1/4, 1/8, 1/16, 1/32],
+                "sr": [1/2, 1/3, 1/5, 1/8, 1/10, 1/12, 1/13, 1/15, 1/18, 1/20, 1/22, 1/23, 1/25],
             },
         },
 
@@ -100,7 +101,7 @@ def main():
                 "K": [2000, 3000, 4000, 5000],
                 "sr": [
                     (0.5, 0.5, 0.05),
-                    (0.5, 0.5, 0.1), 
+                    (0.5, 0.5, 0.1),
                     (0.8, 0.8, 0.1),
                 ],
             },
@@ -116,24 +117,22 @@ def main():
                 "protect_bitstream": protect_bitstream,
             },
             "sweep": {
-                "a": [4, 10, 40, 100, 400],
+                "a": [0, 5, 10, 20, 50, 100, 200, 300, 400],
             },
         },
 
         "hybrid": {
             "config_cls": compressors.HybridConfig,
             "fixed": {
-                "K": 3,
-                "Phi": "BERNOULLI",
+                "K": 6,
+                "Phi": "BERNOULLI:p=0.05",
                 "Psi":learned_base,
                 "local_sum_mode":"neighbor",
                 "block_size": 32,
                 "protect_bitstream": protect_bitstream,
             },
             "sweep": {
-                "sr": [(1/2)*1.3, (1/4)*1.3, (1/8)*1.3, (1/16)*1.3, (1/32)*1.3],
-                # "local_sum_mode": ["hybrid_mean", "column", "neighbor"]
-                # "Phi": ["BERNOULLI:p=0.1", "BERNOULLI:p=0.25", "BERNOULLI:p=0.5"]
+                "sr": [1/2, 1/3, 1/5, 1/8, 1/10, 1/12, 1/13, 1/15, 1/18, 1/20, 1/22, 1/23, 1/25],
             }
         }
     }

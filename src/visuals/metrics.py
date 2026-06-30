@@ -35,6 +35,7 @@ def plot_metric_vs_metric(
     xlabel: str | None = None,
     ylabel: str | None = None,
     show_legend: bool = True,
+    legend_loc: str = "upper right",
     plot_type: str = "line",
 ):
     """
@@ -83,6 +84,9 @@ def plot_metric_vs_metric(
 
     show_legend : bool, optional
         Whether to show a legend.
+    
+    legend_loc : str, optional
+        legend location, defaults to upper right.
     
     plot_type : str, optional
         Type of plot to generate. Options are "line" or "bar". Default is "line".
@@ -196,8 +200,7 @@ def plot_metric_vs_metric(
         ax.set_title(title)
 
     if show_legend:
-        # Pushes it just below the x-axis label
-        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+        ax.legend(loc=legend_loc)
         fig.tight_layout()
 
     apply_plot_style(fig, ax, style)
@@ -216,6 +219,7 @@ def plot_runtime_comparison(
     title: str | None = None,
     ylabel: str = "Time [s]",
     show_legend: bool = True,
+    legend_loc: str = "upper right",
 ):
     """
     Plot compression and decompression runtime comparison.
@@ -259,6 +263,9 @@ def plot_runtime_comparison(
 
     show_legend : bool, optional
         Whether to show a legend.
+
+    legend_loc : str, optional
+        legend location, defaults to upper right.
 
     Returns
     -------
@@ -353,7 +360,8 @@ def plot_runtime_comparison(
         ax.set_title(title)
 
     if show_legend:
-        ax.legend()
+        ax.legend(loc=legend_loc)
+        fig.tight_layout()
 
     apply_plot_style(fig, ax, style)
 
